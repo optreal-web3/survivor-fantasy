@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Last Man Standing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#12181B; --surface:#1B2226; --surface-2:#222B30;
+    --text:#F2EFE9; --text-dim:#8FA0A6;
+    --alive:#4C8567; --alive-dim:#2C3A32;
+    --elim:#C2543A; --elim-dim:#3A2925;
+    --pending:#D9A441;
+    --border:#2C363B;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;overflow-x:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 14px 70px;width:100%;}
+  h1,h2,h3{font-family:'Teko',sans-serif;font-weight:600;letter-spacing:0.3px;margin:0;}
+  h1{font-size:32px;line-height:1;}
+  h2{font-size:23px;line-height:1.1;}
+  h3{font-size:18px;line-height:1.1;color:var(--text-dim);font-weight:500;}
+  p{line-height:1.5;color:var(--text-dim);margin:6px 0 0;font-size:14.5px;}
+  .scoreboard{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--border);padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
+  .scoreboard .week{font-family:'Teko',sans-serif;font-size:40px;color:var(--pending);line-height:1;}
+  .scoreboard .week-label{font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;width:100%;}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+  button{font-family:'Inter',sans-serif;font-weight:600;font-size:14.5px;background:var(--pending);color:#1a1400;border:none;border-radius:6px;padding:11px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
+  button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
+  button.danger{background:var(--elim);color:#fff;}
+  button.small{width:auto;padding:7px 12px;font-size:13px;}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  button:active{transform:translateY(1px);}
+  input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:6px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
+  label{font-size:12.5px;color:var(--text-dim);display:block;margin-top:11px;line-height:1.4;}
+  .pill{font-size:11px;padding:3px 9px;border-radius:99px;font-weight:600;white-space:nowrap;}
+  .pill.alive{background:var(--alive-dim);color:var(--alive);}
+  .pill.elim{background:var(--elim-dim);color:var(--elim);}
+  .pill.pending{background:var(--surface-2);color:var(--pending);}
+  .tabs{display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;}
+  .tab{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);border-radius:99px;padding:8px 14px;font-size:13.5px;font-weight:600;cursor:pointer;}
+  .tab.active{background:var(--pending);color:#1a1400;border-color:var(--pending);}
+  .slot-card{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;}
+  .slot-label{font-family:'Teko',sans-serif;font-size:17px;color:var(--pending);}
+  .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;}
+  .result-item:last-child{border-bottom:none;}
+  .kickoff-tag{font-size:11.5px;font-weight:600;}
+  .lb-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;gap:8px;}
+  .lb-row:last-child{border-bottom:none;}
+  .divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
+  .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:6px;padding:10px 12px;margin-top:12px;line-height:1.5;}
+  .banner{background:#3A2925;border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;line-height:1.5;}
+  .center{text-align:center;padding:60px 20px;color:var(--text-dim);}
+  .stat{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;}
+  .stat b{color:var(--text);font-weight:600;}
+  .tablewrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
+  th{color:var(--text-dim);font-size:11px;text-transform:uppercase;}
+  .muted-link{background:none;border:none;color:var(--text-dim);font-size:13px;padding:6px 0;text-decoration:underline;cursor:pointer;width:auto;}
+  .confirm-box{border-top:1px solid var(--border);margin-top:8px;padding-top:8px;}
+  @media (max-width:400px){ h1{font-size:27px;} .scoreboard .week{font-size:34px;} .wrap{padding:14px 10px 60px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="banner"></div>
+  <div id="app"><div class="center">Loading…</div></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://caehjxogikaekpcrxcoo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__CUibPnjUkkg8LZ6B-ecFA_cY0TJp9P';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let session = null, profile = null;
+let currentWeek = null, lineupSlots = [], myPicks = [], usedPlayerIds = new Set();
+let weekGamesMap = {};
+let screen = 'loading', activeTab = 'home';
+let magicLinkSent = false;
+
+const app = document.getElementById('app');
+const bannerEl = document.getElementById('banner');
+function showBanner(msg){ bannerEl.innerHTML = `<div class="banner">${esc(msg)}</div>`; }
+function clearBanner(){ bannerEl.innerHTML = ''; }
+function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
+
+function ctDate(iso){
+  return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso));
+}
+function ctTime(iso){
+  return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', weekday:'short', hour:'numeric', minute:'2-digit'}).format(new Date(iso)) + ' CT';
+}
+function isSameDayCT(iso){ return ctDate(iso) === ctDate(new Date().toISOString()); }
+
+// ---------- DATA LOADING ----------
+async function loadProfile(){
+  const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  profile = data;
+}
+async function loadCurrentWeek(){
+  const { data } = await sb.from('weeks').select('*').gt('closes_at', new Date().toISOString()).order('week_number').limit(1).maybeSingle();
+  currentWeek = data;
+}
+async function loadLineupSlots(){
+  const { data } = await sb.from('lineup_slots').select('*').order('sort_order');
+  lineupSlots = data || [];
+}
+async function loadMyPicks(){
+  if(!currentWeek) { myPicks = []; return; }
+  const { data } = await sb.from('picks').select('*').eq('player_id', session.user.id).eq('week_number', currentWeek.week_number);
+  myPicks = data || [];
+}
+async function loadUsedPlayers(){
+  const { data } = await sb.from('picks').select('nfl_player_id').eq('player_id', session.user.id);
+  usedPlayerIds = new Set((data||[]).map(p => p.nfl_player_id));
+}
+async function loadWeekGames(){
+  if(!currentWeek){ weekGamesMap = {}; return; }
+  const { data } = await sb.from('games').select('team, kickoff_at').eq('week_number', currentWeek.week_number);
+  weekGamesMap = {};
+  (data||[]).forEach(g => weekGamesMap[g.team] = g.kickoff_at);
+}
+async function loadAllData(){
+  await loadProfile();
+  await Promise.all([loadCurrentWeek(), loadLineupSlots()]);
+  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadWeekGames()]);
+}
+
+// ---------- AUTH ----------
+async function sendMagicLink(email, displayName){
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin + window.location.pathname,
+      data: { display_name: displayName }
+    }
+  });
+  if(error) throw error;
+  magicLinkSent = true;
+  render();
+}
+async function signOut(){
+  await sb.auth.signOut();
+  session = null; profile = null;
+  screen = 'auth'; magicLinkSent = false;
+  render();
+}
+
+// ---------- RENDER ----------
+function render(){
+  if(screen === 'loading'){ app.innerHTML = `<div class="center">Loading…</div>`; return; }
+  if(screen === 'auth'){ return renderAuth(); }
+  if(screen === 'app'){ return renderShell(); }
+}
+
+function renderAuth(){
+  if(magicLinkSent){
+    app.innerHTML = `
+      <h1>Last Man Standing</h1>
+      <div class="card">
+        <h3>Check your email</h3>
+        <p>We sent you a sign-in link. Open it on this device to come back here signed in.</p>
+        <button class="secondary" id="backBtn" style="margin-top:14px;">Use a different email</button>
+      </div>`;
+    document.getElementById('backBtn').onclick = () => { magicLinkSent = false; render(); };
+    return;
+  }
+  app.innerHTML = `
+    <h1>Last Man Standing</h1>
+    <p>Pick a full lineup each week — 1 QB, 2 RB, 3 WR, 1 TE. Clear the weekly threshold or you're out. Every player can only be used once all season.</p>
+    <div class="card">
+      <h3>Sign in / join</h3>
+      <label>Display name (shown to other players — your email never is)</label>
+      <input id="nameInput" placeholder="e.g. Ace" />
+      <label>Email</label>
+      <input id="emailInput" type="email" placeholder="you@example.com" />
+      <button id="sendBtn" style="margin-top:16px;">Send sign-in link</button>
+      <div id="authErr" class="note" style="display:none;"></div>
+    </div>`;
+  document.getElementById('sendBtn').onclick = guard(async () => {
+    const name = document.getElementById('nameInput').value.trim();
+    const email = document.getElementById('emailInput').value.trim();
+    if(!name || !email){ showBanner('Enter both a display name and an email.'); return; }
+    await sendMagicLink(email, name);
+  });
+}
+
+function renderShell(){
+  const tabs = [
+    ['home','Home'], ['standings','Standings'], ['prizes','Prize Pool']
+  ];
+  if(profile?.is_commissioner) tabs.push(['admin','Commissioner']);
+
+  app.innerHTML = `
+    <div class="row" style="margin-bottom:10px;">
+      <h1>Last Man Standing</h1>
+      <button class="muted-link" id="signOutBtn">sign out</button>
+    </div>
+    <div class="tabs">${tabs.map(([id,label]) => `<div class="tab ${activeTab===id?'active':''}" data-tab="${id}">${label}</div>`).join('')}</div>
+    <div id="tabBody"></div>
+  `;
+  document.getElementById('signOutBtn').onclick = signOut;
+  tabs.forEach(([id]) => {
+    document.querySelector(`[data-tab="${id}"]`).onclick = () => { activeTab = id; render(); };
+  });
+
+  const body = document.getElementById('tabBody');
+  if(activeTab === 'home') return renderHome(body);
+  if(activeTab === 'standings') return renderStandings(body);
+  if(activeTab === 'prizes') return renderPrizes(body);
+  if(activeTab === 'admin') return renderAdmin(body);
+}
+
+function renderHome(body){
+  if(!currentWeek){
+    body.innerHTML = `<div class="card"><h3>No active week</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
+    return;
+  }
+  const now = new Date();
+  const windowOpen = now >= new Date(currentWeek.opens_at) && now <= new Date(currentWeek.closes_at);
+
+  let statusHTML = '';
+  if(!profile.alive){
+    statusHTML = `<div class="card"><h3>You're out</h3><p>Eliminated in week ${profile.eliminated_week}. Thanks for playing — check the standings tab for where things landed.</p></div>`;
+  } else if(!profile.is_approved){
+    statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with the commissioner.</p></div>`;
+  } else if(!windowOpen){
+    const notYetOpen = now < new Date(currentWeek.opens_at);
+    statusHTML = `<div class="card"><h3>${notYetOpen ? 'Picks not open yet' : 'Picks are closed'}</h3><p>${notYetOpen ? `Week ${currentWeek.week_number} opens ${ctTime(currentWeek.opens_at)}.` : `Week ${currentWeek.week_number} closed ${ctTime(currentWeek.closes_at)}.`}</p></div>`;
+  }
+
+  const slotsHTML = lineupSlots.map(slot => {
+    const pick = myPicks.find(p => p.slot === slot.slot);
+    if(pick){
+      return `
+        <div class="slot-card">
+          <div class="row"><span class="slot-label">${slot.slot}</span><span class="pill alive">LOCKED</span></div>
+          <p style="color:var(--text);margin-top:4px;">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim)">(${esc(pick.team)})</span></p>
+          ${pick.score !== null ? `<p>Score: <strong style="color:${pick.result==='pass'?'var(--alive)':'var(--elim)'}">${pick.score}</strong></p>` : `<p>Score pending</p>`}
+        </div>`;
+    }
+    if(!profile.alive || !profile.is_approved || !windowOpen) {
+      return `<div class="slot-card"><span class="slot-label">${slot.slot}</span><p>Not filled</p></div>`;
+    }
+    return `
+      <div class="slot-card">
+        <span class="slot-label">${slot.slot}</span>
+        <input placeholder="Search ${slot.position}..." class="slotSearch" data-slot="${slot.slot}" data-position="${slot.position}" autocomplete="off"/>
+        <div class="results" id="results-${slot.slot}"></div>
+      </div>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div class="scoreboard">
+      <div><div class="week-label">Playing as</div><h2>${esc(profile.display_name)}</h2></div>
+      <div style="text-align:right;"><div class="week-label">Week</div><div class="week">${currentWeek.week_number}</div></div>
+    </div>
+    ${statusHTML}
+    <div class="card">
+      <h3>Your lineup</h3>
+      ${slotsHTML}
+      <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.</div>
+    </div>
+  `;
+
+  document.querySelectorAll('.slotSearch').forEach(input => {
+    let debounce;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => runSearch(input.dataset.slot, input.dataset.position, input.value), 250);
+    });
+  });
+}
+
+async function runSearch(slot, position, query){
+  const resultsEl = document.getElementById(`results-${slot}`);
+  if(!query || query.length < 2){ resultsEl.innerHTML = ''; return; }
+  const { data } = await sb.from('nfl_players').select('id, full_name, team')
+    .eq('position', position).eq('active', true).ilike('full_name', `%${query}%`).limit(30);
+  const now = Date.now();
+  const options = (data || [])
+    .filter(p => !usedPlayerIds.has(p.id))
+    .map(p => ({ ...p, kickoff: weekGamesMap[p.team] || null }))
+    .filter(p => p.kickoff && new Date(p.kickoff).getTime() > now)
+    .sort((a,b) => a.full_name.localeCompare(b.full_name))
+    .slice(0, 12);
+
+  if(options.length === 0){
+    resultsEl.innerHTML = `<p style="margin-top:8px;">No available, not-yet-started ${position}s match "${esc(query)}".</p>`;
+    return;
+  }
+  resultsEl.innerHTML = options.map(p => {
+    const color = isSameDayCT(p.kickoff) ? 'var(--elim)' : 'var(--alive)';
+    return `<div class="result-item" data-id="${p.id}" data-name="${esc(p.full_name)}" data-team="${esc(p.team)}">
+      <span>${esc(p.full_name)} <span style="color:var(--text-dim)">(${esc(p.team)})</span></span>
+      <span class="kickoff-tag" style="color:${color}">${ctTime(p.kickoff)}</span>
+    </div>`;
+  }).join('');
+  resultsEl.querySelectorAll('.result-item').forEach(el => {
+    el.onclick = () => {
+      const { id, name, team } = el.dataset;
+      showPickConfirm(slot, id, name, team);
+    };
+  });
+}
+
+function showPickConfirm(slot, id, name, team){
+  const resultsEl = document.getElementById(`results-${slot}`);
+  resultsEl.innerHTML = `
+    <div class="confirm-box">
+      <p style="color:var(--text);">Lock in <strong>${esc(name)}</strong> (${esc(team)}) for ${slot}? This can't be changed once submitted.</p>
+      <div class="row" style="gap:8px;margin-top:6px;">
+        <button class="small secondary" id="cancelPick" style="flex:1;">Cancel</button>
+        <button class="small" id="confirmPick" style="flex:1;">Confirm pick</button>
+      </div>
+    </div>`;
+  document.getElementById('cancelPick').onclick = () => { resultsEl.innerHTML = ''; };
+  document.getElementById('confirmPick').onclick = guard(async () => {
+    const { error } = await sb.rpc('submit_slot_pick', { p_week: currentWeek.week_number, p_slot: slot, p_player_ref: id });
+    if(error){ showBanner(error.message); return; }
+    await Promise.all([loadMyPicks(), loadUsedPlayers()]);
+    renderShell();
+  });
+}
+
+async function renderStandings(body){
+  body.innerHTML = `<div class="center">Loading standings…</div>`;
+  const { data } = await sb.from('profiles').select('display_name, alive, eliminated_week').eq('is_approved', true);
+  const rows = (data || []).sort((a,b) =>
+    (b.alive - a.alive) || ((b.eliminated_week ?? 999) - (a.eliminated_week ?? 999)) || a.display_name.localeCompare(b.display_name)
+  );
+  body.innerHTML = `
+    <div class="card">
+      <h3>Standings</h3>
+      ${rows.map(r => `
+        <div class="lb-row">
+          <span>${esc(r.display_name)}</span>
+          <span class="pill ${r.alive ? 'alive' : 'elim'}">${r.alive ? 'ALIVE' : `OUT · WK ${r.eliminated_week}`}</span>
+        </div>`).join('') || '<p>No approved players yet.</p>'}
+    </div>`;
+}
+
+async function renderPrizes(body){
+  body.innerHTML = `<div class="center">Loading…</div>`;
+  const [{ data: settings }, { count }] = await Promise.all([
+    sb.from('league_settings').select('*').eq('id', 1).single(),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true)
+  ]);
+  const fee = settings.entry_fee || 0;
+  const total = fee * (count || 0);
+  const organizer = total * settings.organizer_pct / 100;
+  const weekly = total * settings.weekly_pct / 100;
+  const grand = total * settings.grand_pct / 100;
+  const weeks = settings.weekly_prize_end_week || 1;
+  const perWeek = weekly / weeks;
+  const money = n => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  body.innerHTML = `
+    <div class="card">
+      <h3>Prize pool</h3>
+      <div class="stat"><span>Entry fee</span><b>${fee ? money(fee) : '—'}</b></div>
+      <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
+      <div class="stat"><span>Total pool</span><b>${money(total)}</b></div>
+      <div class="divider"></div>
+      <div class="stat"><span>Grand prize pool (${settings.grand_pct}%)</span><b>${money(grand)}</b></div>
+      <div class="stat"><span>Weekly prizes (${settings.weekly_pct}%)</span><b>${money(weekly)} total</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${money(perWeek)}</b></div>
+      <div class="note">Weekly prizes are paid weeks 1 through ${weeks}. Totals update automatically as more players are approved.</div>
+      <div class="note">For transparency: ${settings.organizer_pct}% of entry fees (${money(organizer)}) goes toward running the league — hosting, tools, and the time spent operating it week to week.</div>
+    </div>`;
+}
+
+async function runManualSync(secretKey){
+  const sbAdmin = supabase.createClient(SUPABASE_URL, secretKey);
+
+  // 1. Roster sync from Sleeper (free, no key needed for this part)
+  const rosterRes = await fetch('https://api.sleeper.app/v1/players/nfl');
+  const allPlayers = await rosterRes.json();
+  const rows = [];
+  for(const id in allPlayers){
+    const p = allPlayers[id];
+    if(!p.active) continue;
+    if(!['QB','RB','WR','TE'].includes(p.position)) continue;
+    rows.push({ id, full_name: p.full_name || `${p.first_name} ${p.last_name}`, position: p.position, team: p.team, active: true });
+  }
+  await sbAdmin.from('nfl_players').update({ active: false }).not('id', 'is', null);
+  const { error: rosterError } = await sbAdmin.from('nfl_players').upsert(rows);
+  if(rosterError) throw rosterError;
+
+  // 2. Schedule sync from ESPN's free scoreboard, for whichever week is currently open or next
+  const { data: nextWeek } = await sb.from('weeks').select('week_number')
+    .gt('closes_at', new Date().toISOString()).order('week_number').limit(1).maybeSingle();
+
+  let gamesUpserted = 0;
+  if(nextWeek){
+    const espnRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${nextWeek.week_number}&seasontype=2&year=2026`);
+    const schedule = await espnRes.json();
+    const gameRows = [];
+    for(const event of schedule.events ?? []){
+      const kickoff = event.date;
+      const competitors = event.competitions?.[0]?.competitors ?? [];
+      for(const c of competitors){
+        const abbr = c.team?.abbreviation;
+        if(abbr) gameRows.push({ week_number: nextWeek.week_number, team: abbr, kickoff_at: kickoff });
+      }
+    }
+    if(gameRows.length){
+      const { error } = await sbAdmin.from('games').upsert(gameRows, { onConflict: 'week_number,team' });
+      if(error) throw error;
+      gamesUpserted = gameRows.length;
+      const lastKickoff = gameRows.reduce((max,g) => g.kickoff_at > max ? g.kickoff_at : max, gameRows[0].kickoff_at);
+      await sbAdmin.from('weeks').update({ closes_at: lastKickoff }).eq('week_number', nextWeek.week_number);
+    }
+  }
+  return { playersSynced: rows.length, week: nextWeek?.week_number, gamesUpserted };
+}
+
+async function renderAdmin(body){
+  body.innerHTML = `<div class="center">Loading…</div>`;
+  const [{ data: settings }, { data: players }] = await Promise.all([
+    sb.from('league_settings').select('*').eq('id', 1).single(),
+    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week').order('display_name')
+  ]);
+  const weekForScores = currentWeek ? currentWeek.week_number : 1;
+  const { data: picksForWeek } = await sb.from('picks')
+    .select('id, slot, nfl_player_name, score, week_number, profiles(display_name)')
+    .eq('week_number', weekForScores)
+    .order('slot');
+
+  body.innerHTML = `
+    <div class="card">
+      <h3>Sync NFL data</h3>
+      <p>Pulls the current active roster and this week's real kickoff times. Run this whenever rosters change or a new week's schedule needs loading — nothing here is saved; the key below is used once for this click only.</p>
+      <label>Secret key (Supabase → Settings → API Keys → the "secret" key, not the publishable one)</label>
+      <input id="syncKey" type="password" placeholder="sb_secret_..." autocomplete="off" />
+      <button id="runSyncBtn" style="margin-top:12px;">Sync now</button>
+      <div id="syncStatus"></div>
+    </div>
+
+    <div class="card">
+      <h3>League settings</h3>
+      <label>Weekly point threshold (combined team total)</label>
+      <input id="s_threshold" type="number" value="${settings.weekly_threshold}" />
+      <label>Signup closes at</label>
+      <input id="s_signup" type="datetime-local" value="${settings.signup_closes_at ? settings.signup_closes_at.slice(0,16) : ''}" />
+      <label>Entry fee</label>
+      <input id="s_fee" type="number" step="0.01" value="${settings.entry_fee ?? ''}" />
+      <label>Organizer % / Weekly % / Grand %</label>
+      <div class="row">
+        <input id="s_org" type="number" value="${settings.organizer_pct}" style="width:auto;flex:1;"/>
+        <input id="s_week" type="number" value="${settings.weekly_pct}" style="width:auto;flex:1;"/>
+        <input id="s_grand" type="number" value="${settings.grand_pct}" style="width:auto;flex:1;"/>
+      </div>
+      <label>Weekly prizes paid through week</label>
+      <input id="s_wpew" type="number" value="${settings.weekly_prize_end_week ?? ''}" />
+      <button id="saveSettings" style="margin-top:14px;">Save league settings</button>
+    </div>
+
+    <div class="card">
+      <h3>Players</h3>
+      ${players.map(p => `
+        <div class="lb-row">
+          <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''}</span>
+          <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
+        </div>`).join('') || '<p>No players yet.</p>'}
+    </div>
+
+    <div class="card">
+      <h3>Week ${weekForScores} scores</h3>
+      ${picksForWeek && picksForWeek.length ? `
+      <div class="tablewrap"><table>
+        <tr><th>Player</th><th>Slot</th><th>Pick</th><th>Score</th></tr>
+        ${picksForWeek.map(pk => `
+          <tr>
+            <td>${esc(pk.profiles?.display_name || '')}</td>
+            <td>${pk.slot}</td>
+            <td>${esc(pk.nfl_player_name)}</td>
+            <td><input type="number" step="0.1" class="scoreInput" data-id="${pk.id}" value="${pk.score ?? ''}" style="margin:0;width:80px;padding:6px 8px;"/></td>
+          </tr>`).join('')}
+      </table></div>
+      <button id="saveScores" style="margin-top:12px;">Save scores</button>
+      <button id="finalizeWeek" style="margin-top:10px;">Finalize week ${weekForScores}</button>
+      <div id="finalizeConfirm"></div>
+      ` : '<p>No picks submitted for this week yet.</p>'}
+    </div>
+  `;
+
+  document.getElementById('runSyncBtn').onclick = guard(async () => {
+    const key = document.getElementById('syncKey').value.trim();
+    if(!key){ showBanner('Paste the secret key first.'); return; }
+    document.getElementById('syncStatus').innerHTML = `<p>Syncing…</p>`;
+    const result = await runManualSync(key);
+    document.getElementById('syncKey').value = '';
+    document.getElementById('syncStatus').innerHTML = `<p style="color:var(--alive)">Synced ${result.playersSynced} players${result.week ? ` and ${result.gamesUpserted} games for week ${result.week}` : ''}.</p>`;
+  });
+
+  document.getElementById('saveSettings').onclick = guard(async () => {
+    const signup = document.getElementById('s_signup').value;
+    await sb.rpc('commissioner_update_weekly_threshold', { p_threshold: parseFloat(document.getElementById('s_threshold').value) });
+    await sb.rpc('commissioner_set_signup_deadline', { p_deadline: signup ? new Date(signup).toISOString() : null });
+    await sb.rpc('commissioner_update_prize_settings', {
+      p_entry_fee: parseFloat(document.getElementById('s_fee').value) || null,
+      p_organizer_pct: parseFloat(document.getElementById('s_org').value),
+      p_weekly_pct: parseFloat(document.getElementById('s_week').value),
+      p_grand_pct: parseFloat(document.getElementById('s_grand').value),
+      p_weekly_prize_end_week: parseInt(document.getElementById('s_wpew').value) || null
+    });
+    renderAdmin(body);
+  });
+
+  document.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const id = btn.dataset.approve;
+      const current = btn.dataset.current === 'true';
+      const { error } = await sb.rpc('commissioner_set_player_approved', { p_player_id: id, p_approved: !current });
+      if(error) throw error;
+      renderAdmin(body);
+    });
+  });
+
+  const saveScoresBtn = document.getElementById('saveScores');
+  if(saveScoresBtn){
+    saveScoresBtn.onclick = guard(async () => {
+      const inputs = document.querySelectorAll('.scoreInput');
+      for(const inp of inputs){
+        const val = inp.value === '' ? null : parseFloat(inp.value);
+        const { error } = await sb.rpc('commissioner_set_score', { p_pick_id: inp.dataset.id, p_score: val });
+        if(error) throw error;
+      }
+      showBanner('Scores saved.');
+      renderAdmin(body);
+    });
+  }
+  const finalizeBtn = document.getElementById('finalizeWeek');
+  if(finalizeBtn){
+    finalizeBtn.onclick = () => {
+      document.getElementById('finalizeConfirm').innerHTML = `
+        <div class="confirm-box">
+          <p style="color:var(--text);">Finalize week ${weekForScores}? This eliminates anyone below threshold or with an incomplete team.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="cancelFinalize" style="flex:1;">Cancel</button>
+            <button class="small danger" id="confirmFinalize" style="flex:1;">Confirm finalize</button>
+          </div>
+        </div>`;
+      document.getElementById('cancelFinalize').onclick = () => { document.getElementById('finalizeConfirm').innerHTML = ''; };
+      document.getElementById('confirmFinalize').onclick = guard(async () => {
+        const { error } = await sb.rpc('commissioner_finalize_week', { p_week: weekForScores });
+        if(error) throw error;
+        showBanner(`Week ${weekForScores} finalized.`);
+        await loadAllData();
+        renderShell();
+      });
+    };
+  }
+}
+
+// ---------- INIT ----------
+sb.auth.onAuthStateChange(async (event, s) => {
+  if(s){
+    session = s;
+    await loadAllData();
+    screen = 'app';
+    render();
+  }
+});
+
+(async () => {
+  const { data: { session: existing } } = await sb.auth.getSession();
+  if(existing){
+    session = existing;
+    await loadAllData();
+    screen = 'app';
+  } else {
+    screen = 'auth';
+  }
+  render();
+})();
+</script>
+</body>
+</html>
