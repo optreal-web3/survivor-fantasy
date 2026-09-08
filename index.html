@@ -3,68 +3,85 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Last Man Standing</title>
+<title>Sweaty Sharpe's Survivor Fantasy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
-    --bg:#12181B; --surface:#1B2226; --surface-2:#222B30;
-    --text:#F2EFE9; --text-dim:#8FA0A6;
-    --alive:#4C8567; --alive-dim:#2C3A32;
-    --elim:#C2543A; --elim-dim:#3A2925;
-    --pending:#D9A441;
-    --border:#2C363B;
+    --bg:#0A0B12; --surface:#12131C; --surface-2:#1A1B28;
+    --text:#F1F3F8; --text-dim:#8B93A8;
+    --alive:#4ADE80; --alive-dim:rgba(74,222,128,0.12);
+    --elim:#F76464; --elim-dim:rgba(247,100,100,0.12);
+    --pending:#4FC3F7; --pending-dim:rgba(79,195,247,0.12);
+    --purple:#8B5CF6;
+    --border:#262838;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
-  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;background-image:radial-gradient(circle at 15% 0%, rgba(139,92,246,0.08), transparent 40%),radial-gradient(circle at 85% 10%, rgba(79,195,247,0.06), transparent 35%);}
   .wrap{max-width:640px;margin:0 auto;padding:18px 14px 70px;width:100%;}
-  h1,h2,h3{font-family:'Teko',sans-serif;font-weight:600;letter-spacing:0.3px;margin:0;}
-  h1{font-size:32px;line-height:1;}
-  h2{font-size:23px;line-height:1.1;}
-  h3{font-size:18px;line-height:1.1;color:var(--text-dim);font-weight:500;}
+  h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
+  h1{font-size:26px;line-height:1.15;}
+  h2{font-size:20px;line-height:1.15;}
+  h3{font-size:11.5px;line-height:1.2;color:var(--pending);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0;}
   p{line-height:1.5;color:var(--text-dim);margin:6px 0 0;font-size:14.5px;}
-  .scoreboard{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--border);padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
-  .scoreboard .week{font-family:'Teko',sans-serif;font-size:40px;color:var(--pending);line-height:1;}
-  .scoreboard .week-label{font-size:12px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;width:100%;}
+  .scoreboard{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
+  .scoreboard .week{font-family:'Archivo Black',sans-serif;font-size:32px;color:var(--pending);line-height:1;}
+  .scoreboard .week-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;width:100%;}
+  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.06), rgba(139,92,246,0.05));box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
-  button{font-family:'Inter',sans-serif;font-weight:600;font-size:14.5px;background:var(--pending);color:#1a1400;border:none;border-radius:6px;padding:11px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
+  button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
   button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
-  button.danger{background:var(--elim);color:#fff;}
+  button.danger{background:var(--elim);color:#1a0505;}
   button.small{width:auto;padding:7px 12px;font-size:13px;}
   button:disabled{opacity:0.4;cursor:not-allowed;}
   button:active{transform:translateY(1px);}
-  input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:6px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
+  input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:8px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
   label{font-size:12.5px;color:var(--text-dim);display:block;margin-top:11px;line-height:1.4;}
-  .pill{font-size:11px;padding:3px 9px;border-radius:99px;font-weight:600;white-space:nowrap;}
-  .pill.alive{background:var(--alive-dim);color:var(--alive);}
-  .pill.elim{background:var(--elim-dim);color:var(--elim);}
-  .pill.pending{background:var(--surface-2);color:var(--pending);}
+  .pill{font-size:10.5px;padding:4px 9px;border-radius:5px;font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;border:1px solid transparent;}
+  .pill.alive{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
+  .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
+  .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
   .tabs{display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;}
-  .tab{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);border-radius:99px;padding:8px 14px;font-size:13.5px;font-weight:600;cursor:pointer;}
-  .tab.active{background:var(--pending);color:#1a1400;border-color:var(--pending);}
-  .slot-card{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;}
-  .slot-label{font-family:'Teko',sans-serif;font-size:17px;color:var(--pending);}
+  .tab{flex:0 0 auto;background:var(--surface);border:1px solid var(--border);color:var(--text-dim);border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;cursor:pointer;}
+  .tab.active{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
+  .slot-card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;}
+  .slot-label{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;color:var(--pending);text-transform:uppercase;letter-spacing:0.5px;}
   .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;}
   .result-item:last-child{border-bottom:none;}
-  .kickoff-tag{font-size:11.5px;font-weight:600;}
+  .kickoff-tag{font-size:11.5px;font-weight:700;}
   .lb-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;gap:8px;}
   .lb-row:last-child{border-bottom:none;}
   .divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
-  .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:6px;padding:10px 12px;margin-top:12px;line-height:1.5;}
-  .banner{background:#3A2925;border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:6px;font-size:13px;margin-bottom:14px;line-height:1.5;}
+  .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.5;border:1px solid var(--border);}
+  .banner{background:var(--elim-dim);border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;line-height:1.5;}
   .center{text-align:center;padding:60px 20px;color:var(--text-dim);}
   .stat{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;}
-  .stat b{color:var(--text);font-weight:600;}
+  .stat b{color:var(--text);font-weight:700;}
   .tablewrap{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
   th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
-  th{color:var(--text-dim);font-size:11px;text-transform:uppercase;}
+  th{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;}
   .muted-link{background:none;border:none;color:var(--text-dim);font-size:13px;padding:6px 0;text-decoration:underline;cursor:pointer;width:auto;}
   .confirm-box{border-top:1px solid var(--border);margin-top:8px;padding-top:8px;}
-  @media (max-width:400px){ h1{font-size:27px;} .scoreboard .week{font-size:34px;} .wrap{padding:14px 10px 60px;} }
+  .faq-item{border-bottom:1px solid var(--border);padding:11px 0;}
+  .faq-item:last-child{border-bottom:none;}
+  .faq-q{font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .faq-q::after{content:'+';color:var(--pending);font-size:18px;font-weight:400;flex:0 0 auto;}
+  .faq-q.open::after{content:'−';}
+  .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
+  .faq-a.open{display:block;}
+  .history-group{margin-top:14px;}
+  .history-group:first-of-type{margin-top:10px;}
+  .history-pos{font-weight:800;font-size:11.5px;color:var(--pending);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
+  .history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
+  .history-item:last-child{border-bottom:none;}
+  .used-name{font-size:13.5px;text-decoration:line-through;text-decoration-color:var(--elim);color:var(--elim);}
+  .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
+  .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
+  @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding:14px 10px 60px;} }
 </style>
 </head>
 <body>
@@ -79,7 +96,7 @@ const SUPABASE_KEY = 'sb_publishable__CUibPnjUkkg8LZ6B-ecFA_cY0TJp9P';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let session = null, profile = null;
-let currentWeek = null, lineupSlots = [], myPicks = [], usedPlayerIds = new Set();
+let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
 let weekGamesMap = {};
 let screen = 'loading', activeTab = 'home';
 let magicLinkSent = false;
@@ -121,6 +138,11 @@ async function loadUsedPlayers(){
   const { data } = await sb.from('picks').select('nfl_player_id').eq('player_id', session.user.id);
   usedPlayerIds = new Set((data||[]).map(p => p.nfl_player_id));
 }
+async function loadMyAllPicks(){
+  const { data } = await sb.from('picks').select('nfl_player_name, position, team, week_number, locked_at')
+    .eq('player_id', session.user.id).order('week_number');
+  myAllPicks = data || [];
+}
 async function loadWeekGames(){
   if(!currentWeek){ weekGamesMap = {}; return; }
   const { data } = await sb.from('games').select('team, kickoff_at').eq('week_number', currentWeek.week_number);
@@ -130,7 +152,7 @@ async function loadWeekGames(){
 async function loadAllData(){
   await loadProfile();
   await Promise.all([loadCurrentWeek(), loadLineupSlots()]);
-  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadWeekGames()]);
+  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames()]);
 }
 
 // ---------- AUTH ----------
@@ -163,7 +185,7 @@ function render(){
 function renderAuth(){
   if(magicLinkSent){
     app.innerHTML = `
-      <h1>Last Man Standing</h1>
+      <h1>Sweaty Sharpe's Survivor Fantasy</h1>
       <div class="card">
         <h3>Check your email</h3>
         <p>We sent you a sign-in link. Open it on this device to come back here signed in.</p>
@@ -173,7 +195,7 @@ function renderAuth(){
     return;
   }
   app.innerHTML = `
-    <h1>Last Man Standing</h1>
+    <h1>Sweaty Sharpe's Survivor Fantasy</h1>
     <p>Pick a full lineup each week — 1 QB, 2 RB, 3 WR, 1 TE. Clear the weekly threshold or you're out. Every player can only be used once all season.</p>
     <div class="card">
       <h3>Sign in / join</h3>
@@ -194,13 +216,13 @@ function renderAuth(){
 
 function renderShell(){
   const tabs = [
-    ['home','Home'], ['standings','Standings'], ['prizes','Prize Pool']
+    ['home','Home'], ['standings','Standings'], ['prizes','Prize Pool'], ['faq','FAQ']
   ];
   if(profile?.is_commissioner) tabs.push(['admin','Commissioner']);
 
   app.innerHTML = `
     <div class="row" style="margin-bottom:10px;">
-      <h1>Last Man Standing</h1>
+      <h1>Sweaty Sharpe's Survivor Fantasy</h1>
       <button class="muted-link" id="signOutBtn">sign out</button>
     </div>
     <div class="tabs">${tabs.map(([id,label]) => `<div class="tab ${activeTab===id?'active':''}" data-tab="${id}">${label}</div>`).join('')}</div>
@@ -215,7 +237,30 @@ function renderShell(){
   if(activeTab === 'home') return renderHome(body);
   if(activeTab === 'standings') return renderStandings(body);
   if(activeTab === 'prizes') return renderPrizes(body);
+  if(activeTab === 'faq') return renderFAQ(body);
   if(activeTab === 'admin') return renderAdmin(body);
+}
+
+function renderPickHistoryHTML(){
+  const positions = ['QB','RB','WR','TE'];
+  const grouped = {};
+  positions.forEach(p => grouped[p] = []);
+  myAllPicks.forEach(p => { if(grouped[p.position]) grouped[p.position].push(p); });
+
+  return `
+    <div class="card">
+      <h3>Your pick history</h3>
+      <p>Every player you've used this season, by position — once someone's on this list, they're locked out for good. Keep this as your own record in case a pick's ever in question.</p>
+      ${positions.map(pos => `
+        <div class="history-group">
+          <div class="history-pos">${pos}</div>
+          ${grouped[pos].length ? grouped[pos].map(p => `
+            <div class="history-item">
+              <span class="used-name">${esc(p.nfl_player_name)} <span style="color:var(--text-dim);text-decoration:none;">(${esc(p.team)})</span></span>
+              <span class="week-tag">WK ${p.week_number}</span>
+            </div>`).join('') : '<div class="history-empty">None yet</div>'}
+        </div>`).join('')}
+    </div>`;
 }
 
 function renderHome(body){
@@ -263,11 +308,13 @@ function renderHome(body){
       <div style="text-align:right;"><div class="week-label">Week</div><div class="week">${currentWeek.week_number}</div></div>
     </div>
     ${statusHTML}
-    <div class="card">
+    <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
+      ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
       ${slotsHTML}
       <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.</div>
     </div>
+    ${renderPickHistoryHTML()}
   `;
 
   document.querySelectorAll('.slotSearch').forEach(input => {
@@ -325,7 +372,7 @@ function showPickConfirm(slot, id, name, team){
   document.getElementById('confirmPick').onclick = guard(async () => {
     const { error } = await sb.rpc('submit_slot_pick', { p_week: currentWeek.week_number, p_slot: slot, p_player_ref: id });
     if(error){ showBanner(error.message); return; }
-    await Promise.all([loadMyPicks(), loadUsedPlayers()]);
+    await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks()]);
     renderShell();
   });
 }
@@ -349,9 +396,10 @@ async function renderStandings(body){
 
 async function renderPrizes(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: settings }, { count }] = await Promise.all([
+  const [{ data: settings }, { count }, { count: aliveCount }] = await Promise.all([
     sb.from('league_settings').select('*').eq('id', 1).single(),
-    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true)
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true).eq('alive', true)
   ]);
   const fee = settings.entry_fee || 0;
   const total = fee * (count || 0);
@@ -360,6 +408,8 @@ async function renderPrizes(body){
   const grand = total * settings.grand_pct / 100;
   const weeks = settings.weekly_prize_end_week || 1;
   const perWeek = weekly / weeks;
+  const survivors = aliveCount || 0;
+  const perSurvivor = survivors > 0 ? grand / survivors : 0;
   const money = n => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
   body.innerHTML = `
@@ -370,9 +420,11 @@ async function renderPrizes(body){
       <div class="stat"><span>Total pool</span><b>${money(total)}</b></div>
       <div class="divider"></div>
       <div class="stat"><span>Grand prize pool (${settings.grand_pct}%)</span><b>${money(grand)}</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${money(perSurvivor)} each` : '—'}</b></div>
       <div class="stat"><span>Weekly prizes (${settings.weekly_pct}%)</span><b>${money(weekly)} total</b></div>
       <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${money(perWeek)}</b></div>
       <div class="note">Weekly prizes are paid weeks 1 through ${weeks}. Totals update automatically as more players are approved.</div>
+      <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
       <div class="note">For transparency: ${settings.organizer_pct}% of entry fees (${money(organizer)}) goes toward running the league — hosting, tools, and the time spent operating it week to week.</div>
     </div>`;
 }
@@ -420,6 +472,49 @@ async function runManualSync(secretKey){
     }
   }
   return { playersSynced: rows.length, week: nextWeek?.week_number, gamesUpserted };
+}
+
+// Edit/add entries here as new questions come up — no other code needs to change.
+const FAQ_ITEMS = [
+  { q: "Do I need a new sign-in link every time I want to lock in a pick?",
+    a: "No — once you click your link, this device stays signed in. You'll only need a new one if you switch devices or browsers, sign out, or clear your browser's data." },
+  { q: "Can I change a pick after I lock it in?",
+    a: "No. Locking a pick is permanent — there's no undo, for you or the commissioner — so double check before confirming." },
+  { q: "What happens if I don't finish my full lineup before the week closes?",
+    a: "An incomplete team (missing even one of the 7 slots) is treated as an elimination, the same as a team that didn't clear the point threshold." },
+  { q: "Can I use the same NFL player twice?",
+    a: "No — once you've used a player in any week, they're off-limits for the rest of the season." },
+  { q: "What if my chosen player's game already started?",
+    a: "You can't pick them. The search only shows players whose game hasn't kicked off yet, and bye-week teams are excluded automatically." },
+  { q: "What score do I need to survive each week?",
+    a: "Your full team's combined score across all 7 starters (full-PPR scoring) needs to clear that week's threshold — not any single player's score on its own. Check the Home tab for this week's number." },
+  { q: "How is the grand prize paid out?",
+    a: "100% of the grand prize pool goes to whoever is still alive at the very end. If more than one player survives to the finish, it's split evenly between them." },
+  { q: "How are weekly prizes decided?",
+    a: "Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes run weeks 1 through 10, with the pool split evenly across those 10 weeks." },
+  { q: "Is my email visible to other players?",
+    a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
+  { q: "What if an NFL game gets cancelled or postponed?",
+    a: "A cancelled game, or one pushed to a later week entirely, counts as 0 points for that one slot — the rest of your lineup can still carry the team. A reschedule that stays within the same week (like Sunday to Monday) is scored normally. This isn't something the app tracks for you — keep an eye on news for whoever you've picked." },
+];
+
+function renderFAQ(body){
+  body.innerHTML = `
+    <div class="card">
+      <h3>FAQ</h3>
+      ${FAQ_ITEMS.map((item, i) => `
+        <div class="faq-item">
+          <div class="faq-q" data-i="${i}">${esc(item.q)}</div>
+          <div class="faq-a" id="faq-a-${i}">${esc(item.a)}</div>
+        </div>`).join('')}
+    </div>`;
+  document.querySelectorAll('.faq-q').forEach(el => {
+    el.onclick = () => {
+      const ans = document.getElementById(`faq-a-${el.dataset.i}`);
+      const open = ans.classList.toggle('open');
+      el.classList.toggle('open', open);
+    };
+  });
 }
 
 async function renderAdmin(body){
