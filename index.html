@@ -550,7 +550,7 @@ async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
   const [{ data: settings }, { data: players }, { data: weekRow }] = await Promise.all([
     sb.from('league_settings').select('*').eq('id', 1).single(),
-    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week, second_chance_used').order('display_name'),
+    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week, second_chance_used, is_commissioner').order('display_name'),
     currentWeek ? sb.from('weeks').select('is_finalized').eq('week_number', currentWeek.week_number).single() : Promise.resolve({data:null})
   ]);
   const weekForScores = currentWeek ? currentWeek.week_number : 1;
@@ -617,17 +617,22 @@ async function renderAdmin(body){
 
     <div class="card">
       <h3>Players</h3>
-      ${players.map(p => {
-        const eligibleForSecondChance = !p.alive && !p.second_chance_used && p.eliminated_week && p.eliminated_week <= 5;
-        return `
-        <div class="lb-row">
-          <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''}</span>
-          <span class="row" style="gap:6px;width:auto;">
-            ${eligibleForSecondChance ? `<button class="small secondary" data-secondchance="${p.id}">2nd Chance</button>` : ''}
-            <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
-          </span>
-        </div>`;
-      }).join('') || '<p>No players yet.</p>'}
+        ${(() => {
+        const commissionerCount = players.filter(x => x.is_commissioner).length;
+        return players.map(p => {
+          const eligibleForSecondChance = !p.alive && !p.second_chance_used && p.eliminated_week && p.eliminated_week <= 5;
+          const isLastCommissioner = p.is_commissioner && commissionerCount <= 1;
+          return `
+          <div class="lb-row">
+            <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''} ${p.is_commissioner ? `<span class="pill">Commish</span>` : ''}</span>
+            <span class="row" style="gap:6px;width:auto;">
+              ${eligibleForSecondChance ? `<button class="small secondary" data-secondchance="${p.id}">2nd Chance</button>` : ''}
+              <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
+              <button class="small secondary" data-admin="${p.id}" data-current="${p.is_commissioner}" ${isLastCommissioner ? 'disabled title="Can\'t revoke the last remaining commissioner"' : ''}>${p.is_commissioner ? 'Revoke admin' : 'Make admin'}</button>
+            </span>
+          </div>`;
+        }).join('') || '<p>No players yet.</p>';
+      })()}
     </div>
 
     <div class="card">
@@ -668,6 +673,17 @@ async function renderAdmin(body){
       const current = btn.dataset.current === 'true';
       const { error } = await sb.rpc('commissioner_set_player_approved', { p_player_id: id, p_approved: !current });
       if(error) throw error;
+      renderAdmin(body);
+    });
+  });
+
+    document.querySelectorAll('[data-admin]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const id = btn.dataset.admin;
+      const current = btn.dataset.current === 'true';
+      const { error } = await sb.rpc(current ? 'commissioner_revoke_admin' : 'commissioner_grant_admin', { p_player_id: id });
+      if(error) throw error;
+      showBanner(current ? 'Admin revoked.' : 'Admin granted.');
       renderAdmin(body);
     });
   });
