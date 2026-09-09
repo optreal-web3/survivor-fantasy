@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Sweaty Sharpe's Survivor Fantasy</title>
+<link rel="icon" type="image/png" href="/images/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -81,6 +82,18 @@
   .used-name{font-size:13.5px;text-decoration:line-through;text-decoration-color:var(--elim);color:var(--elim);}
   .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
   .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
+  .app-header{display:flex;align-items:center;gap:12px;margin-bottom:10px;min-height:56px;}
+  .app-header img.logo{width:44px;height:44px;border-radius:9px;object-fit:cover;flex:0 0 auto;}
+  .app-header h1{font-size:20px;line-height:1.2;}
+  @media (max-width:400px){ .app-header h1{font-size:16px;} }
+  .icon-tab{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;}
+  .icon-tab .icon{font-size:18px;line-height:1;}
+  .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
+  .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;}
+  .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
+  .hero-banner{width:100%;border-radius:10px;margin-bottom:14px;display:block;}
+  .legend-portrait{width:100%;max-height:420px;object-fit:cover;object-position:top center;border-radius:10px;margin-bottom:14px;}
+  .legend-quote{font-family:'Archivo Black',sans-serif;text-transform:none;font-size:17px;line-height:1.4;color:var(--pending);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--pending);background:var(--pending-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding:14px 10px 60px;} }
 </style>
 </head>
@@ -185,7 +198,7 @@ function render(){
 function renderAuth(){
   if(magicLinkSent){
     app.innerHTML = `
-      <h1>Sweaty Sharpe's Survivor Fantasy</h1>
+      <div class="app-header"><img class="logo" src="/images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
       <div class="card">
         <h3>Check your email</h3>
         <p>We sent you a sign-in link. Open it on this device to come back here signed in.</p>
@@ -195,7 +208,7 @@ function renderAuth(){
     return;
   }
   app.innerHTML = `
-    <h1>Sweaty Sharpe's Survivor Fantasy</h1>
+    <div class="app-header"><img class="logo" src="/images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
     <p>Pick a full lineup each week — 1 QB, 2 RB, 3 WR, 1 TE. Clear the weekly threshold or you're out. Every player can only be used once all season.</p>
     <div class="card">
       <h3>Sign in / join</h3>
@@ -215,22 +228,25 @@ function renderAuth(){
 }
 
 function renderShell(){
-  const tabs = [
-    ['home','Home'], ['standings','Standings'], ['prizes','Prize Pool'], ['faq','FAQ']
+  const mainTabs = [
+    ['home','🏠','Home'], ['standings','📊','Standings'], ['prizes','💰','Prizes']
   ];
-  if(profile?.is_commissioner) tabs.push(['admin','Commissioner']);
+  if(profile?.is_commissioner) mainTabs.push(['admin','⚙️','Commish']);
 
   app.innerHTML = `
-    <div class="row" style="margin-bottom:10px;">
-      <h1>Sweaty Sharpe's Survivor Fantasy</h1>
-      <button class="muted-link" id="signOutBtn">sign out</button>
-    </div>
-    <div class="tabs">${tabs.map(([id,label]) => `<div class="tab ${activeTab===id?'active':''}" data-tab="${id}">${label}</div>`).join('')}</div>
+    <div class="app-header"><img class="logo" src="/images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
+    <div class="tabs">${mainTabs.map(([id,icon,label]) => `<div class="tab ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon-tab"><span class="icon">${icon}</span>${label}</span></div>`).join('')}</div>
     <div id="tabBody"></div>
+    <div class="footer-links">
+      <span class="flink" data-tab="faq">FAQ</span>
+      <span class="flink" data-tab="legend">The Legend</span>
+      <button class="flink" id="signOutBtn">Logout</button>
+    </div>
+    <div class="footer-contact">Questions or feedback? Contact Optreal in Discord or on X.</div>
   `;
   document.getElementById('signOutBtn').onclick = signOut;
-  tabs.forEach(([id]) => {
-    document.querySelector(`[data-tab="${id}"]`).onclick = () => { activeTab = id; render(); };
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    el.onclick = () => { activeTab = el.dataset.tab; render(); };
   });
 
   const body = document.getElementById('tabBody');
@@ -238,6 +254,7 @@ function renderShell(){
   if(activeTab === 'standings') return renderStandings(body);
   if(activeTab === 'prizes') return renderPrizes(body);
   if(activeTab === 'faq') return renderFAQ(body);
+  if(activeTab === 'legend') return renderLegend(body);
   if(activeTab === 'admin') return renderAdmin(body);
 }
 
@@ -263,11 +280,13 @@ function renderPickHistoryHTML(){
     </div>`;
 }
 
-function renderHome(body){
+async function renderHome(body){
   if(!currentWeek){
     body.innerHTML = `<div class="card"><h3>No active week</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
     return;
   }
+  const { data: settingsRow } = await sb.from('league_settings').select('weekly_threshold').eq('id', 1).single();
+  const threshold = settingsRow?.weekly_threshold ?? 100;
   const now = new Date();
   const windowOpen = now >= new Date(currentWeek.opens_at) && now <= new Date(currentWeek.closes_at);
 
@@ -302,6 +321,10 @@ function renderHome(body){
       </div>`;
   }).join('');
 
+  const totalScored = myPicks.every(p => p.score !== null) && myPicks.length === lineupSlots.length
+    ? myPicks.reduce((sum,p) => sum + Number(p.score), 0)
+    : null;
+
   body.innerHTML = `
     <div class="scoreboard">
       <div><div class="week-label">Playing as</div><h2>${esc(profile.display_name)}</h2></div>
@@ -313,6 +336,8 @@ function renderHome(body){
       ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
       ${slotsHTML}
       <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.</div>
+      <div class="stat" style="margin-top:10px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
+      ${totalScored !== null ? `<div class="stat"><span>Your total this week</span><b style="color:${totalScored >= threshold ? 'var(--alive)' : 'var(--elim)'}">${totalScored} pts</b></div>` : ''}
     </div>
     ${renderPickHistoryHTML()}
   `;
@@ -379,13 +404,44 @@ function showPickConfirm(slot, id, name, team){
 
 async function renderStandings(body){
   body.innerHTML = `<div class="center">Loading standings…</div>`;
+  const { data: lastFinalized } = await sb.from('weeks').select('week_number')
+    .eq('is_finalized', true).order('week_number', { ascending: false }).limit(1).maybeSingle();
+
+  let topScoresHTML = '', eliminatedHTML = '';
+  if(lastFinalized){
+    const w = lastFinalized.week_number;
+    const { data: picksThatWeek } = await sb.from('picks')
+      .select('player_id, score, profiles(display_name)').eq('week_number', w);
+    const totals = {};
+    (picksThatWeek || []).forEach(p => {
+      if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', total: 0 };
+      totals[p.player_id].total += Number(p.score) || 0;
+    });
+    const top5 = Object.values(totals).sort((a,b) => b.total - a.total).slice(0, 5);
+    topScoresHTML = `
+      <div class="card">
+        <h3>Week ${w} high scores</h3>
+        ${top5.map(t => `<div class="lb-row"><span>${esc(t.name)}</span><b style="color:var(--pending);">${t.total} pts</b></div>`).join('') || '<p>No scores yet.</p>'}
+      </div>`;
+
+    const { data: eliminated } = await sb.from('profiles').select('display_name')
+      .eq('is_approved', true).eq('eliminated_week', w);
+    eliminatedHTML = `
+      <div class="card">
+        <h3>Eliminated week ${w}</h3>
+        ${(eliminated||[]).map(e => `<div class="lb-row"><span>${esc(e.display_name)}</span><span class="pill elim">OUT</span></div>`).join('') || '<p>No one was eliminated this week.</p>'}
+      </div>`;
+  }
+
   const { data } = await sb.from('profiles').select('display_name, alive, eliminated_week').eq('is_approved', true);
   const rows = (data || []).sort((a,b) =>
     (b.alive - a.alive) || ((b.eliminated_week ?? 999) - (a.eliminated_week ?? 999)) || a.display_name.localeCompare(b.display_name)
   );
   body.innerHTML = `
+    ${topScoresHTML}
+    ${eliminatedHTML}
     <div class="card">
-      <h3>Standings</h3>
+      <h3>Survivors</h3>
       ${rows.map(r => `
         <div class="lb-row">
           <span>${esc(r.display_name)}</span>
@@ -396,13 +452,14 @@ async function renderStandings(body){
 
 async function renderPrizes(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: settings }, { count }, { count: aliveCount }] = await Promise.all([
+  const [{ data: settings }, { count }, { count: aliveCount }, { count: secondChanceCount }] = await Promise.all([
     sb.from('league_settings').select('*').eq('id', 1).single(),
     sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true),
-    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true).eq('alive', true)
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true).eq('alive', true),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('second_chance_used', true)
   ]);
   const fee = settings.entry_fee || 0;
-  const total = fee * (count || 0);
+  const total = fee * ((count || 0) + (secondChanceCount || 0));
   const organizer = total * settings.organizer_pct / 100;
   const weekly = total * settings.weekly_pct / 100;
   const grand = total * settings.grand_pct / 100;
@@ -417,6 +474,7 @@ async function renderPrizes(body){
       <h3>Prize pool</h3>
       <div class="stat"><span>Entry fee</span><b>${fee ? money(fee) : '—'}</b></div>
       <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
+      ${secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
       <div class="stat"><span>Total pool</span><b>${money(total)}</b></div>
       <div class="divider"></div>
       <div class="stat"><span>Grand prize pool (${settings.grand_pct}%)</span><b>${money(grand)}</b></div>
@@ -427,51 +485,6 @@ async function renderPrizes(body){
       <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
       <div class="note">For transparency: ${settings.organizer_pct}% of entry fees (${money(organizer)}) goes toward running the league — hosting, tools, and the time spent operating it week to week.</div>
     </div>`;
-}
-
-async function runManualSync(secretKey){
-  const sbAdmin = supabase.createClient(SUPABASE_URL, secretKey);
-
-  // 1. Roster sync from Sleeper (free, no key needed for this part)
-  const rosterRes = await fetch('https://api.sleeper.app/v1/players/nfl');
-  const allPlayers = await rosterRes.json();
-  const rows = [];
-  for(const id in allPlayers){
-    const p = allPlayers[id];
-    if(!p.active) continue;
-    if(!['QB','RB','WR','TE'].includes(p.position)) continue;
-    rows.push({ id, full_name: p.full_name || `${p.first_name} ${p.last_name}`, position: p.position, team: p.team, active: true });
-  }
-  await sbAdmin.from('nfl_players').update({ active: false }).not('id', 'is', null);
-  const { error: rosterError } = await sbAdmin.from('nfl_players').upsert(rows);
-  if(rosterError) throw rosterError;
-
-  // 2. Schedule sync from ESPN's free scoreboard, for whichever week is currently open or next
-  const { data: nextWeek } = await sb.from('weeks').select('week_number')
-    .gt('closes_at', new Date().toISOString()).order('week_number').limit(1).maybeSingle();
-
-  let gamesUpserted = 0;
-  if(nextWeek){
-    const espnRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?week=${nextWeek.week_number}&seasontype=2&year=2026`);
-    const schedule = await espnRes.json();
-    const gameRows = [];
-    for(const event of schedule.events ?? []){
-      const kickoff = event.date;
-      const competitors = event.competitions?.[0]?.competitors ?? [];
-      for(const c of competitors){
-        const abbr = c.team?.abbreviation;
-        if(abbr) gameRows.push({ week_number: nextWeek.week_number, team: abbr, kickoff_at: kickoff });
-      }
-    }
-    if(gameRows.length){
-      const { error } = await sbAdmin.from('games').upsert(gameRows, { onConflict: 'week_number,team' });
-      if(error) throw error;
-      gamesUpserted = gameRows.length;
-      const lastKickoff = gameRows.reduce((max,g) => g.kickoff_at > max ? g.kickoff_at : max, gameRows[0].kickoff_at);
-      await sbAdmin.from('weeks').update({ closes_at: lastKickoff }).eq('week_number', nextWeek.week_number);
-    }
-  }
-  return { playersSynced: rows.length, week: nextWeek?.week_number, gamesUpserted };
 }
 
 // Edit/add entries here as new questions come up — no other code needs to change.
@@ -496,6 +509,8 @@ const FAQ_ITEMS = [
     a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
   { q: "What if an NFL game gets cancelled or postponed?",
     a: "A cancelled game, or one pushed to a later week entirely, counts as 0 points for that one slot — the rest of your lineup can still carry the team. A reschedule that stays within the same week (like Sunday to Monday) is scored normally. This isn't something the app tracks for you — keep an eye on news for whoever you've picked." },
+  { q: "I got eliminated — is there any way back in?",
+    a: "If you're eliminated in week 5 or earlier, a second-chance buy-in may be available (same entry fee, added to the prize pool) — check with the commissioner. You keep every player you've already used; they stay off-limits going forward. This option isn't available once you're past week 5." },
 ];
 
 function renderFAQ(body){
@@ -517,26 +532,68 @@ function renderFAQ(body){
   });
 }
 
+function renderLegend(body){
+  body.innerHTML = `
+    <img class="legend-portrait" src="/images/Sweaty-Sharpe-800x1200.jpg" alt="Sweaty Sharpe">
+    <div class="card">
+      <h3>The Legend</h3>
+      <p>Once upon a time in the dark underbelly of sports betting, there lived a pure degen named Sharpe. Bills stacked higher than his confidence, parlays crushed him weekly, and every "lock of the century" his best friend Skip would pass along, somehow found a way to cook him. He was down bad — living on leftover pizza and pure hopium.</p>
+      <p>Then one desperate night, while hammering a ridiculous 12-leg same-game parlay with his last $47, something weird happened. The more nervous he got, the more he started sweating. Beads poured down his bald head. His glasses fogged. And somehow… the ticket cashed.</p>
+      <p>Curious, he tested the theory. Bigger sweat = bigger wins. He started deliberately stressing himself out before every degen play — pacing, overthinking, letting the anxiety cook until he was glistening like a rotisserie chicken. The results were undeniable. The sweat became his edge.</p>
+      <p>The legend peaked during the biggest NFL Survivor contest of the year. $100 buy-in with a $1.5M grand prize. Week after week, Sharpe poured sweat into every pick. By the final week he was the last man standing, walking away with a life-changing pile of cash while the rest of the field left in tears.</p>
+      <p>Now, years later, Sweaty Sharpe still wakes up every morning and mentally replays that final Survivor pick. The moment the last game ended, the sweat poured, and the money hit. He lives for that feeling — and he wants every other degen to chase it with him.</p>
+      <div class="legend-quote">"Sometimes the only edge you need is a full forehead of pure, uncut anxiety."<br>— Sweaty Sharpe</div>
+    </div>`;
+}
+
 async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: settings }, { data: players }] = await Promise.all([
+  const [{ data: settings }, { data: players }, { data: weekRow }] = await Promise.all([
     sb.from('league_settings').select('*').eq('id', 1).single(),
-    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week').order('display_name')
+    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week, second_chance_used').order('display_name'),
+    currentWeek ? sb.from('weeks').select('is_finalized').eq('week_number', currentWeek.week_number).single() : Promise.resolve({data:null})
   ]);
   const weekForScores = currentWeek ? currentWeek.week_number : 1;
-  const { data: picksForWeek } = await sb.from('picks')
-    .select('id, slot, nfl_player_name, score, week_number, profiles(display_name)')
-    .eq('week_number', weekForScores)
-    .order('slot');
+  const isFinalized = weekRow?.is_finalized || false;
+
+  let scoresTableHTML;
+  if(isFinalized){
+    const { data: picksThatWeek } = await sb.from('picks')
+      .select('player_id, score, profiles(display_name, alive)').eq('week_number', weekForScores);
+    const totals = {};
+    (picksThatWeek || []).forEach(p => {
+      if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', total: 0, alive: p.profiles?.alive };
+      totals[p.player_id].total += Number(p.score) || 0;
+    });
+    const rows = Object.values(totals).sort((a,b) => b.total - a.total);
+    scoresTableHTML = `
+      <div class="tablewrap"><table>
+        <tr><th>Player</th><th>Total</th><th>Result</th></tr>
+        ${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.total}</td><td><span class="pill ${r.alive?'alive':'elim'}">${r.alive?'ALIVE':'OUT'}</span></td></tr>`).join('')}
+      </table></div>
+      <div class="note">This week is finalized — showing final totals. Editing scores or re-finalizing (after fixing a mistake) is still possible below.</div>`;
+  } else {
+    const { data: picksForWeek } = await sb.from('picks')
+      .select('id, slot, nfl_player_name, score, week_number, profiles(display_name)')
+      .eq('week_number', weekForScores)
+      .order('slot');
+    scoresTableHTML = picksForWeek && picksForWeek.length ? `
+      <div class="tablewrap"><table>
+        <tr><th>Player</th><th>Slot</th><th>Pick</th><th>Score</th></tr>
+        ${picksForWeek.map(pk => `
+          <tr>
+            <td>${esc(pk.profiles?.display_name || '')}</td>
+            <td>${pk.slot}</td>
+            <td>${esc(pk.nfl_player_name)}</td>
+            <td><input type="number" step="0.1" class="scoreInput" data-id="${pk.id}" value="${pk.score ?? ''}" style="margin:0;width:80px;padding:6px 8px;"/></td>
+          </tr>`).join('')}
+      </table></div>` : '<p>No picks submitted for this week yet.</p>';
+  }
 
   body.innerHTML = `
     <div class="card">
-      <h3>Sync NFL data</h3>
-      <p>Pulls the current active roster and this week's real kickoff times. Run this whenever rosters change or a new week's schedule needs loading — nothing here is saved; the key below is used once for this click only.</p>
-      <label>Secret key (Supabase → Settings → API Keys → the "secret" key, not the publishable one)</label>
-      <input id="syncKey" type="password" placeholder="sb_secret_..." autocomplete="off" />
-      <button id="runSyncBtn" style="margin-top:12px;">Sync now</button>
-      <div id="syncStatus"></div>
+      <h3>NFL data sync</h3>
+      <p>Roster and schedule syncing runs via a scheduled server-side job (set up once via Supabase's CLI — see Step 6 in the setup doc), not from a button in this app. Supabase blocks the kind of key this would need from ever being used in a browser, so there's no safe in-app version of this.</p>
     </div>
 
     <div class="card">
@@ -560,40 +617,35 @@ async function renderAdmin(body){
 
     <div class="card">
       <h3>Players</h3>
-      ${players.map(p => `
+      ${players.map(p => {
+        const eligibleForSecondChance = !p.alive && !p.second_chance_used && p.eliminated_week && p.eliminated_week <= 5;
+        return `
         <div class="lb-row">
           <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''}</span>
-          <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
-        </div>`).join('') || '<p>No players yet.</p>'}
+          <span class="row" style="gap:6px;width:auto;">
+            ${eligibleForSecondChance ? `<button class="small secondary" data-secondchance="${p.id}">2nd Chance</button>` : ''}
+            <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
+          </span>
+        </div>`;
+      }).join('') || '<p>No players yet.</p>'}
     </div>
 
     <div class="card">
       <h3>Week ${weekForScores} scores</h3>
-      ${picksForWeek && picksForWeek.length ? `
-      <div class="tablewrap"><table>
-        <tr><th>Player</th><th>Slot</th><th>Pick</th><th>Score</th></tr>
-        ${picksForWeek.map(pk => `
-          <tr>
-            <td>${esc(pk.profiles?.display_name || '')}</td>
-            <td>${pk.slot}</td>
-            <td>${esc(pk.nfl_player_name)}</td>
-            <td><input type="number" step="0.1" class="scoreInput" data-id="${pk.id}" value="${pk.score ?? ''}" style="margin:0;width:80px;padding:6px 8px;"/></td>
-          </tr>`).join('')}
-      </table></div>
-      <button id="saveScores" style="margin-top:12px;">Save scores</button>
-      <button id="finalizeWeek" style="margin-top:10px;">Finalize week ${weekForScores}</button>
+      ${scoresTableHTML}
+      ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
+      <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
       <div id="finalizeConfirm"></div>
-      ` : '<p>No picks submitted for this week yet.</p>'}
     </div>
   `;
 
-  document.getElementById('runSyncBtn').onclick = guard(async () => {
-    const key = document.getElementById('syncKey').value.trim();
-    if(!key){ showBanner('Paste the secret key first.'); return; }
-    document.getElementById('syncStatus').innerHTML = `<p>Syncing…</p>`;
-    const result = await runManualSync(key);
-    document.getElementById('syncKey').value = '';
-    document.getElementById('syncStatus').innerHTML = `<p style="color:var(--alive)">Synced ${result.playersSynced} players${result.week ? ` and ${result.gamesUpserted} games for week ${result.week}` : ''}.</p>`;
+  document.querySelectorAll('[data-secondchance]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const { error } = await sb.rpc('commissioner_grant_second_chance', { p_player_id: btn.dataset.secondchance });
+      if(error) throw error;
+      showBanner('Second chance granted.');
+      renderAdmin(body);
+    });
   });
 
   document.getElementById('saveSettings').onclick = guard(async () => {
