@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Sweaty Sharpe's Survivor Fantasy</title>
-<link rel="icon" type="image/png" href="../images/favicon.png">
+<link rel="icon" type="image/png" href="images/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -198,7 +198,7 @@ function render(){
 function renderAuth(){
   if(magicLinkSent){
     app.innerHTML = `
-      <div class="app-header"><img class="logo" src="../images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
+      <div class="app-header"><img class="logo" src="images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
       <div class="card">
         <h3>Check your email</h3>
         <p>We sent you a sign-in link. Open it on this device to come back here signed in.</p>
@@ -208,7 +208,7 @@ function renderAuth(){
     return;
   }
   app.innerHTML = `
-    <div class="app-header"><img class="logo" src="/images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
+    <div class="app-header"><img class="logo" src="images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
     <p>Pick a full lineup each week — 1 QB, 2 RB, 3 WR, 1 TE. Clear the weekly threshold or you're out. Every player can only be used once all season.</p>
     <div class="card">
       <h3>Sign in / join</h3>
@@ -234,7 +234,7 @@ function renderShell(){
   if(profile?.is_commissioner) mainTabs.push(['admin','⚙️','Commish']);
 
   app.innerHTML = `
-    <div class="app-header"><img class="logo" src="/images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
+    <div class="app-header"><img class="logo" src="images/Sweaty-Sharpe-500x500.jpg" alt=""><h1>Sweaty Sharpe's Survivor Fantasy</h1></div>
     <div class="tabs">${mainTabs.map(([id,icon,label]) => `<div class="tab ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon-tab"><span class="icon">${icon}</span>${label}</span></div>`).join('')}</div>
     <div id="tabBody"></div>
     <div class="footer-links">
@@ -534,7 +534,7 @@ function renderFAQ(body){
 
 function renderLegend(body){
   body.innerHTML = `
-    <img class="legend-portrait" src="../images/Sweaty-Sharpe-800x1200.jpg" alt="Sweaty Sharpe">
+    <img class="legend-portrait" src="images/Sweaty-Sharpe-800x1200.jpg" alt="Sweaty Sharpe">
     <div class="card">
       <h3>The Legend</h3>
       <p>Once upon a time in the dark underbelly of sports betting, there lived a pure degen named Sharpe. Bills stacked higher than his confidence, parlays crushed him weekly, and every "lock of the century" his best friend Skip would pass along, somehow found a way to cook him. He was down bad — living on leftover pizza and pure hopium.</p>
