@@ -398,7 +398,7 @@ async function renderPicks(body){
   const { data: settingsRow } = await sb.from('league_settings').select('weekly_threshold').eq('id', 1).single();
   const threshold = settingsRow?.weekly_threshold ?? 100;
   const now = new Date();
-  const windowOpen = now >= new Date(currentWeek.opens_at) && now <= new Date(currentWeek.closes_at);
+  const windowOpen = now <= new Date(currentWeek.closes_at);
 
   let statusHTML = '';
   if(!profile.alive){
@@ -406,8 +406,7 @@ async function renderPicks(body){
   } else if(!profile.is_approved){
     statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with the commissioner.</p></div>`;
   } else if(!windowOpen){
-    const notYetOpen = now < new Date(currentWeek.opens_at);
-    statusHTML = `<div class="card"><h3>${notYetOpen ? 'Picks not open yet' : 'Picks are closed'}</h3><p>${notYetOpen ? `Week ${currentWeek.week_number} opens ${ctTime(currentWeek.opens_at)}.` : `Week ${currentWeek.week_number} closed ${ctTime(currentWeek.closes_at)}.`}</p></div>`;
+    statusHTML = `<div class="card"><h3>Picks are closed</h3><p>Week ${currentWeek.week_number} closed ${ctTime(currentWeek.closes_at)}.</p></div>`;
   }
 
   const slotsHTML = lineupSlots.map(slot => {
