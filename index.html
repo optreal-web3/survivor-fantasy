@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0A0B12">
+<title>Sweaty Sharpe's Survivor Fantasy</title>
+<link rel="icon" type="image/png" href="images/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --bg:#0A0B12; --surface:#12131C; --surface-2:#1A1B28;
+    --text:#F1F3F8; --text-dim:#8B93A8;
+    --alive:#4ADE80; --alive-dim:rgba(74,222,128,0.12);
+    --elim:#F76464; --elim-dim:rgba(247,100,100,0.12);
+    --pending:#4FC3F7; --pending-dim:rgba(79,195,247,0.12);
+    --purple:#8B5CF6;
+    --border:#262838;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;overflow-x:hidden;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:radial-gradient(circle at 15% 0%, rgba(139,92,246,0.08), transparent 40%),radial-gradient(circle at 85% 10%, rgba(79,195,247,0.06), transparent 35%);}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 14px 90px;width:100%;}
+  h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
+  h1{font-size:26px;line-height:1.15;}
+  h2{font-size:20px;line-height:1.15;}
+  h3{font-size:11.5px;line-height:1.2;color:var(--pending);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0;}
+  p{line-height:1.5;color:var(--text-dim);margin:6px 0 0;font-size:14.5px;}
+  .scoreboard{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
+  .scoreboard .week{font-family:'Archivo Black',sans-serif;font-size:32px;color:var(--pending);line-height:1;}
+  .scoreboard .week-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;width:100%;}
+  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.06), rgba(139,92,246,0.05));box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+  button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
+  button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
+  button.danger{background:var(--elim);color:#1a0505;}
+  button.small{width:auto;padding:10px 12px;font-size:13px;}
+  button:disabled{opacity:0.4;cursor:not-allowed;}
+  button:active{transform:translateY(1px);}
+  input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:8px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
+  label{font-size:12.5px;color:var(--text-dim);display:block;margin-top:11px;line-height:1.4;}
+  .pill{font-size:10.5px;padding:4px 9px;border-radius:5px;font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;border:1px solid transparent;}
+  .pill.alive{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
+  .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
+  .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
+  .bottom-nav{position:fixed;left:0;right:0;bottom:0;width:100%;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
+  .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
+  .bnav-item.active{color:var(--pending);}
+  .bnav-item .icon{line-height:1;}
+  .bnav-item .icon svg{width:20px;height:20px;display:block;}
+  @media (max-width:360px){ .bnav-item{font-size:8.5px;} .bnav-item .icon svg{width:18px;height:18px;} }
+  .slot-card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;}
+  .slot-label{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;color:var(--pending);text-transform:uppercase;letter-spacing:0.5px;}
+  .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;touch-action:manipulation;}
+  .result-item:last-child{border-bottom:none;}
+  .kickoff-tag{font-size:11.5px;font-weight:700;}
+  .lb-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;gap:8px;}
+  .lb-row:last-child{border-bottom:none;}
+  .divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
+  .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.5;border:1px solid var(--border);}
+  .banner{background:var(--elim-dim);border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;line-height:1.5;}
+  .center{text-align:center;padding:60px 20px;color:var(--text-dim);}
+  .stat{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;padding:6px 0;font-size:14px;}
+  .stat b{color:var(--text);font-weight:700;}
+  .tablewrap{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
+  th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
+  th{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;}
+  .muted-link{background:none;border:none;color:var(--text-dim);font-size:13px;padding:6px 0;text-decoration:underline;cursor:pointer;width:auto;}
+  .confirm-box{border-top:1px solid var(--border);margin-top:8px;padding-top:8px;}
+  .faq-item{border-bottom:1px solid var(--border);padding:11px 0;}
+  .faq-item:last-child{border-bottom:none;}
+  .faq-q{font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px;touch-action:manipulation;}
+  .faq-q::after{content:'+';color:var(--pending);font-size:18px;font-weight:400;flex:0 0 auto;}
+  .faq-q.open::after{content:'−';}
+  .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
+  .faq-a.open{display:block;}
+  .history-group{margin-top:14px;}
+  .history-group:first-of-type{margin-top:10px;}
+  .history-pos{font-weight:800;font-size:11.5px;color:var(--pending);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
+  .history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
+  .history-item:last-child{border-bottom:none;}
+  .used-name{font-size:13.5px;color:var(--text);}
+  .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
+  .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
+  .app-header{display:flex;align-items:center;margin-bottom:10px;}
+  .app-header .title-banner{width:100%;max-width:360px;height:auto;display:block;}
+  @media (max-width:400px){ .app-header .title-banner{max-width:280px;} }
+  .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
+  .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
+  .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
+  .hero-banner{width:100%;border-radius:10px;margin-bottom:14px;display:block;}
+  .legend-portrait{float:left;width:130px;max-width:38%;height:auto;border-radius:8px;margin:2px 14px 10px 0;}
+  @media (max-width:400px){ .legend-portrait{width:105px;margin:2px 10px 8px 0;} }
+  .legend-quote{clear:both;font-family:'Archivo Black',sans-serif;text-transform:none;font-size:17px;line-height:1.4;color:var(--pending);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--pending);background:var(--pending-dim);border-radius:0 8px 8px 0;}
+  @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding:14px 10px 80px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="banner"></div>
+  <div id="app"><div class="center">Loading…</div></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://caehjxogikaekpcrxcoo.supabase.co';
+const SUPABASE_KEY = 'sb_publishable__CUibPnjUkkg8LZ6B-ecFA_cY0TJp9P';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let session = null, profile = null;
+let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
+let recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null;
+let weekGamesMap = {};
+let screen = 'loading', activeTab = 'home';
+let magicLinkSent = false;
+
+const app = document.getElementById('app');
+const bannerEl = document.getElementById('banner');
+function showBanner(msg){ bannerEl.innerHTML = `<div class="banner">${esc(msg)}</div>`; }
+function clearBanner(){ bannerEl.innerHTML = ''; }
+function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
+
+// Monochrome tab icons -- plain line-art SVGs (no built-in color) so each
+// tab just inherits the surrounding text color: grey when inactive, the
+// app's blue accent when active. Keeps the tab row in the app's own
+// palette instead of full-color emoji.
+const ICON_PATHS = {
+  home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.8"/><path d="M9.5 20v-6h5v6"/>',
+  picks: '<g transform="rotate(-30 12 12)"><path d="M4 12c2-5 6-8 8-8s6 3 8 8c-2 5-6 8-8 8s-6-3-8-8Z"/><path d="M6.5 12h11"/><path d="M10 10.3v3.4"/><path d="M12 10v4"/><path d="M14 10.3v3.4"/></g>',
+  standings: '<path d="M4 20V13"/><path d="M12 20V5"/><path d="M20 20v-9"/>',
+  prizes: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9"/><path d="M9.7 9.7c0-1.1.9-1.9 2.3-1.9s2.3.8 2.3 1.7c0 2.6-4.6 1.4-4.6 4 0 1 .9 1.9 2.3 1.9s2.3-.8 2.3-1.9"/>',
+  faq: '<circle cx="12" cy="12" r="8.5"/><path d="M9.3 9.6a2.7 2.7 0 1 1 4.3 2.2c-.9.6-1.6 1.1-1.6 2.3"/><circle cx="12" cy="16.7" r="0.9" fill="currentColor" stroke="none"/>',
+  legend: '<path d="M12 6.2c-1.9-1.3-4.3-2-6.8-2v12.6c2.5 0 4.9.7 6.8 2 1.9-1.3 4.3-2 6.8-2V4.2c-2.5 0-4.9.7-6.8 2Z"/><path d="M12 6.2v12.6"/>'
+};
+function tabIcon(key){
+  return `<svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[key] || ''}</svg>`;
+}
+
+function ctDate(iso){
+  return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso));
+}
+function ctTime(iso){
+  return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', weekday:'short', hour:'numeric', minute:'2-digit'}).format(new Date(iso)) + ' CT';
+}
+function isSameDayCT(iso){ return ctDate(iso) === ctDate(new Date().toISOString()); }
+
+// ---------- DATA LOADING ----------
+async function loadProfile(){
+  const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  profile = data;
+}
+async function loadCurrentWeek(){
+  const { data } = await sb.from('weeks').select('*').gt('closes_at', new Date().toISOString()).order('week_number').limit(1).maybeSingle();
+  currentWeek = data;
+}
+async function loadLineupSlots(){
+  const { data } = await sb.from('lineup_slots').select('*').order('sort_order');
+  lineupSlots = data || [];
+}
+async function loadMyPicks(){
+  if(!currentWeek) { myPicks = []; return; }
+  const { data } = await sb.from('picks').select('*').eq('player_id', session.user.id).eq('week_number', currentWeek.week_number);
+  myPicks = data || [];
+}
+async function loadUsedPlayers(){
+  const { data } = await sb.from('picks').select('nfl_player_id').eq('player_id', session.user.id);
+  usedPlayerIds = new Set((data||[]).map(p => p.nfl_player_id));
+}
+async function loadMyAllPicks(){
+  const { data } = await sb.from('picks').select('nfl_player_name, position, team, week_number, locked_at')
+    .eq('player_id', session.user.id).order('week_number');
+  myAllPicks = data || [];
+}
+async function loadWeekGames(){
+  if(!currentWeek){ weekGamesMap = {}; return; }
+  const { data } = await sb.from('games').select('team, kickoff_at').eq('week_number', currentWeek.week_number);
+  weekGamesMap = {};
+  (data||[]).forEach(g => weekGamesMap[g.team] = g.kickoff_at);
+}
+// Home's "recap" needs the most recent week the player has ANY picks in,
+// independent of currentWeek -- this is what keeps last week's lineup/score
+// visible on Home after the week flips over, instead of vanishing the
+// instant closes_at passes.
+async function loadRecentWeek(){
+  const { data } = await sb.from('picks').select('*').eq('player_id', session.user.id)
+    .order('week_number', { ascending: false }).limit(50);
+  if(!data || !data.length){ recentWeekNumber = null; recentWeekPicks = []; recentWeekRow = null; return; }
+  recentWeekNumber = data[0].week_number;
+  recentWeekPicks = data.filter(p => p.week_number === recentWeekNumber);
+  const { data: weekRow } = await sb.from('weeks').select('*').eq('week_number', recentWeekNumber).maybeSingle();
+  recentWeekRow = weekRow;
+}
+async function loadAllData(){
+  await loadProfile();
+  await Promise.all([loadCurrentWeek(), loadLineupSlots()]);
+  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadRecentWeek()]);
+}
+
+// ---------- AUTH ----------
+async function sendMagicLink(email, displayName){
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin + window.location.pathname,
+      data: { display_name: displayName }
+    }
+  });
+  if(error) throw error;
+  magicLinkSent = true;
+  render();
+}
+async function signOut(){
+  await sb.auth.signOut();
+  session = null; profile = null;
+  screen = 'auth'; magicLinkSent = false;
+  render();
+}
+
+// ---------- RENDER ----------
+function render(){
+  if(screen === 'loading'){ app.innerHTML = `<div class="center">Loading…</div>`; return; }
+  if(screen === 'auth'){ return renderAuth(); }
+  if(screen === 'app'){ return renderShell(); }
+}
+
+function renderAuth(){
+  if(magicLinkSent){
+    app.innerHTML = `
+      <div class="app-header"><img class="title-banner" src="images/Sweaty-Sharpe-Title-Banner.png" alt="Sweaty Sharpe's Survivor Fantasy"></div>
+      <div class="card">
+        <h3>Check your email</h3>
+        <p>We sent you a sign-in link. (Check your spam folder if not in Inbox.) Open it on this device to come back here signed in.</p>
+        <button class="secondary" id="backBtn" style="margin-top:14px;">Use a different email</button>
+      </div>`;
+    document.getElementById('backBtn').onclick = () => { magicLinkSent = false; render(); };
+    return;
+  }
+  app.innerHTML = `
+    <div class="app-header"><img class="title-banner" src="images/Sweaty-Sharpe-Title-Banner.png" alt="Sweaty Sharpe's Survivor Fantasy"></div>
+    <p>Pick a full lineup each week — 1 QB, 2 RB, 3 WR, 1 TE. Clear the weekly threshold or you're out. Every player can only be used once all season.</p>
+    <div class="card">
+      <h3>Sign in / join</h3>
+      <label>Display name (shown to other players — your email never is)</label>
+      <input id="nameInput" placeholder="e.g. Ace" />
+      <label>Email</label>
+      <input id="emailInput" type="email" placeholder="you@example.com" />
+      <button id="sendBtn" style="margin-top:16px;">Send sign-in link</button>
+      <div id="authErr" class="note" style="display:none;"></div>
+    </div>`;
+  document.getElementById('sendBtn').onclick = guard(async () => {
+    const name = document.getElementById('nameInput').value.trim();
+    const email = document.getElementById('emailInput').value.trim();
+    if(!name || !email){ showBanner('Enter both a display name and an email.'); return; }
+    await sendMagicLink(email, name);
+  });
+}
+
+function renderShell(){
+  const picksBadge = (currentWeek && profile?.alive && profile?.is_approved && lineupSlots.length)
+    ? ` ${myPicks.length}/${lineupSlots.length}` : '';
+  // Bottom nav carries the 4 primary, time-sensitive tabs. Everything else
+  // (reference material + account actions) stays in the footer-links row
+  // further down the page -- keeps the fixed bar to a size that still fits
+  // comfortably on a narrow phone at a legible font size.
+  const bottomNavTabs = [
+    ['home',tabIcon('home'),'Home'], ['picks',tabIcon('picks'),`Picks${picksBadge}`],
+    ['standings',tabIcon('standings'),'Standings'], ['legend',tabIcon('legend'),'The Legend']
+  ];
+  const footerTabs = [ ['prizes','Prizes'], ['faq','FAQ'] ];
+  if(profile?.is_commissioner) footerTabs.push(['admin','Commish']);
+
+  app.innerHTML = `
+    <div class="app-header"><img class="title-banner" src="images/Sweaty-Sharpe-Title-Banner.png" alt="Sweaty Sharpe's Survivor Fantasy"></div>
+    <div id="tabBody"></div>
+    <div class="footer-links">
+      ${footerTabs.map(([id,label]) => `<span class="flink" data-tab="${id}">${label}</span>`).join('')}
+      <button class="flink" id="signOutBtn">Logout</button>
+    </div>
+    <div class="footer-contact">Questions or feedback? Contact Optreal in Discord or on X.</div>
+    <nav class="bottom-nav">
+      ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
+    </nav>
+  `;
+  document.getElementById('signOutBtn').onclick = signOut;
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    el.onclick = () => { activeTab = el.dataset.tab; render(); };
+  });
+
+  const body = document.getElementById('tabBody');
+  if(activeTab === 'home') return renderHome(body);
+  if(activeTab === 'picks') return renderPicks(body);
+  if(activeTab === 'standings') return renderStandings(body);
+  if(activeTab === 'prizes') return renderPrizes(body);
+  if(activeTab === 'faq') return renderFAQ(body);
+  if(activeTab === 'legend') return renderLegend(body);
+  if(activeTab === 'admin') return renderAdmin(body);
+}
+
+function renderPickHistoryHTML(){
+  const positions = ['QB','RB','WR','TE'];
+  const grouped = {};
+  positions.forEach(p => grouped[p] = []);
+  myAllPicks.forEach(p => { if(grouped[p.position]) grouped[p.position].push(p); });
+
+  return `
+    <div class="card">
+      <h3>Your pick history</h3>
+      <p>Every player you've used this season, by position — once someone's on this list, they're locked out for good. Keep this as your own record in case a pick's ever in question.</p>
+      ${positions.map(pos => `
+        <div class="history-group">
+          <div class="history-pos">${pos}</div>
+          ${grouped[pos].length ? grouped[pos].map(p => `
+            <div class="history-item">
+              <span class="used-name">${esc(p.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(p.team)})</span></span>
+              <span class="week-tag">WK ${p.week_number}</span>
+            </div>`).join('') : '<div class="history-empty">None yet</div>'}
+        </div>`).join('')}
+    </div>`;
+}
+
+// Home is now a status/profile view: alive state, a recap of the most
+// recently *played* week (independent of whether a new week has opened),
+// and season-long pick history. It never depends on currentWeek/opens_at/
+// closes_at, so it has nothing to "flip" out from under a player -- the
+// recap simply stays until a newer week's picks replace it. Building this
+// week's lineup lives on the Picks tab (see renderPicks below).
+async function renderHome(body){
+  const { data: settingsRow } = await sb.from('league_settings').select('weekly_threshold').eq('id', 1).single();
+  const threshold = settingsRow?.weekly_threshold ?? 100;
+
+  let statusHTML = '';
+  if(!profile.alive){
+    statusHTML = `<div class="card"><h3>You're out</h3><p>Eliminated in week ${profile.eliminated_week}. Thanks for playing — check the standings tab for where things landed.</p></div>`;
+  } else if(!profile.is_approved){
+    statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with the commissioner.</p></div>`;
+  } else if(currentWeek){
+    statusHTML = `<div class="card"><h3>You're alive</h3><p>Head to the Picks tab to build your lineup for week ${currentWeek.week_number}.</p></div>`;
+  } else {
+    statusHTML = `<div class="card"><h3>You're alive</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
+  }
+
+  let recapHTML = '';
+  if(recentWeekNumber){
+    const recapSlotsHTML = lineupSlots.map(slot => {
+      const pick = recentWeekPicks.find(p => p.slot === slot.slot);
+      if(!pick){
+        return `<div class="slot-card"><span class="slot-label">${slot.slot}</span><p>Not filled</p></div>`;
+      }
+      const resultPill = pick.result === 'pass' ? '<span class="pill alive">PASS</span>'
+        : pick.result === 'fail' ? '<span class="pill elim">FAIL</span>'
+        : '<span class="pill pending">LOCKED</span>';
+      return `
+        <div class="slot-card">
+          <div class="row"><span class="slot-label">${slot.slot}</span>${resultPill}</div>
+          <p style="color:var(--text);margin-top:4px;">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim)">(${esc(pick.team)})</span></p>
+          ${pick.score !== null ? `<p>Score: <strong style="color:${pick.result==='pass'?'var(--alive)':pick.result==='fail'?'var(--elim)':'var(--text)'}">${pick.score}</strong></p>` : `<p>Score pending</p>`}
+        </div>`;
+    }).join('');
+
+    const allScored = recentWeekPicks.length === lineupSlots.length && lineupSlots.length > 0
+      && recentWeekPicks.every(p => p.score !== null);
+    const recapTotal = allScored ? recentWeekPicks.reduce((sum,p) => sum + Number(p.score), 0) : null;
+
+    recapHTML = `
+      <div class="card">
+        <h3>Week ${recentWeekNumber} recap</h3>
+        ${!recentWeekRow?.is_finalized ? '<p>Scoring in progress — the commissioner hasn\'t finalized this week yet.</p>' : ''}
+        ${recapSlotsHTML}
+        <div class="stat" style="margin-top:10px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
+        ${recapTotal !== null ? `<div class="stat"><span>Total</span><b style="color:${recapTotal >= threshold ? 'var(--alive)' : 'var(--elim)'}">${recapTotal} pts</b></div>` : ''}
+      </div>`;
+  }
+
+  body.innerHTML = `
+    <div class="scoreboard">
+      <div><div class="week-label">Playing as</div><h2>${esc(profile.display_name)}</h2></div>
+      <div style="text-align:right;"><div class="week-label">Week</div><div class="week">${currentWeek ? currentWeek.week_number : (recentWeekNumber ?? '—')}</div></div>
+    </div>
+    ${statusHTML}
+    ${recapHTML}
+    ${renderPickHistoryHTML()}
+  `;
+}
+
+// Picks is the action tab: building/locking this week's lineup. This is
+// the old renderHome's lineup-builder logic, unchanged, just relocated off
+// of Home.
+async function renderPicks(body){
+  if(!currentWeek){
+    body.innerHTML = `<div class="card"><h3>No active week</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
+    return;
+  }
+  const { data: settingsRow } = await sb.from('league_settings').select('weekly_threshold').eq('id', 1).single();
+  const threshold = settingsRow?.weekly_threshold ?? 100;
+  const now = new Date();
+  const windowOpen = now >= new Date(currentWeek.opens_at) && now <= new Date(currentWeek.closes_at);
+
+  let statusHTML = '';
+  if(!profile.alive){
+    statusHTML = `<div class="card"><h3>You're out</h3><p>Eliminated in week ${profile.eliminated_week}. Thanks for playing — check the standings tab for where things landed.</p></div>`;
+  } else if(!profile.is_approved){
+    statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with the commissioner.</p></div>`;
+  } else if(!windowOpen){
+    const notYetOpen = now < new Date(currentWeek.opens_at);
+    statusHTML = `<div class="card"><h3>${notYetOpen ? 'Picks not open yet' : 'Picks are closed'}</h3><p>${notYetOpen ? `Week ${currentWeek.week_number} opens ${ctTime(currentWeek.opens_at)}.` : `Week ${currentWeek.week_number} closed ${ctTime(currentWeek.closes_at)}.`}</p></div>`;
+  }
+
+  const slotsHTML = lineupSlots.map(slot => {
+    const pick = myPicks.find(p => p.slot === slot.slot);
+    if(pick){
+      return `
+        <div class="slot-card">
+          <div class="row"><span class="slot-label">${slot.slot}</span><span class="pill alive">LOCKED</span></div>
+          <p style="color:var(--text);margin-top:4px;">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim)">(${esc(pick.team)})</span></p>
+          ${pick.score !== null ? `<p>Score: <strong style="color:${pick.result==='pass'?'var(--alive)':'var(--elim)'}">${pick.score}</strong></p>` : `<p>Score pending</p>`}
+        </div>`;
+    }
+    if(!profile.alive || !profile.is_approved || !windowOpen) {
+      return `<div class="slot-card"><span class="slot-label">${slot.slot}</span><p>Not filled</p></div>`;
+    }
+    return `
+      <div class="slot-card">
+        <span class="slot-label">${slot.slot}</span>
+        <input placeholder="Search ${slot.position}..." class="slotSearch" data-slot="${slot.slot}" data-position="${slot.position}" autocomplete="off"/>
+        <div class="results" id="results-${slot.slot}"></div>
+      </div>`;
+  }).join('');
+
+  const totalScored = myPicks.every(p => p.score !== null) && myPicks.length === lineupSlots.length
+    ? myPicks.reduce((sum,p) => sum + Number(p.score), 0)
+    : null;
+
+  body.innerHTML = `
+    <div class="scoreboard">
+      <div><div class="week-label">Playing as</div><h2>${esc(profile.display_name)}</h2></div>
+      <div style="text-align:right;"><div class="week-label">Week</div><div class="week">${currentWeek.week_number}</div></div>
+    </div>
+    ${statusHTML}
+    <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
+      <h3>Your lineup</h3>
+      ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
+      ${slotsHTML}
+      <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.</div>
+      <div class="stat" style="margin-top:10px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
+      ${totalScored !== null ? `<div class="stat"><span>Your total this week</span><b style="color:${totalScored >= threshold ? 'var(--alive)' : 'var(--elim)'}">${totalScored} pts</b></div>` : ''}
+    </div>
+  `;
+
+  document.querySelectorAll('.slotSearch').forEach(input => {
+    let debounce;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => runSearch(input.dataset.slot, input.dataset.position, input.value), 250);
+    });
+  });
+}
+
+async function runSearch(slot, position, query){
+  const resultsEl = document.getElementById(`results-${slot}`);
+  if(!query || query.length < 2){ resultsEl.innerHTML = ''; return; }
+  const { data } = await sb.from('nfl_players').select('id, full_name, team')
+    .eq('position', position).eq('active', true).ilike('full_name', `%${query}%`).limit(30);
+  const now = Date.now();
+  const options = (data || [])
+    .filter(p => !usedPlayerIds.has(p.id))
+    .map(p => ({ ...p, kickoff: weekGamesMap[p.team] || null }))
+    .filter(p => p.kickoff && new Date(p.kickoff).getTime() > now)
+    .sort((a,b) => a.full_name.localeCompare(b.full_name))
+    .slice(0, 12);
+
+  if(options.length === 0){
+    resultsEl.innerHTML = `<p style="margin-top:8px;">No available, not-yet-started ${position}s match "${esc(query)}".</p>`;
+    return;
+  }
+  resultsEl.innerHTML = options.map(p => {
+    const color = isSameDayCT(p.kickoff) ? 'var(--elim)' : 'var(--alive)';
+    return `<div class="result-item" data-id="${p.id}" data-name="${esc(p.full_name)}" data-team="${esc(p.team)}">
+      <span>${esc(p.full_name)} <span style="color:var(--text-dim)">(${esc(p.team)})</span></span>
+      <span class="kickoff-tag" style="color:${color}">${ctTime(p.kickoff)}</span>
+    </div>`;
+  }).join('');
+  resultsEl.querySelectorAll('.result-item').forEach(el => {
+    el.onclick = () => {
+      const { id, name, team } = el.dataset;
+      showPickConfirm(slot, id, name, team);
+    };
+  });
+}
+
+function showPickConfirm(slot, id, name, team){
+  const resultsEl = document.getElementById(`results-${slot}`);
+  resultsEl.innerHTML = `
+    <div class="confirm-box">
+      <p style="color:var(--text);">Lock in <strong>${esc(name)}</strong> (${esc(team)}) for ${slot}? This can't be changed once submitted.</p>
+      <div class="row" style="gap:8px;margin-top:6px;">
+        <button class="small secondary" id="cancelPick" style="flex:1;">Cancel</button>
+        <button class="small" id="confirmPick" style="flex:1;">Confirm pick</button>
+      </div>
+    </div>`;
+  document.getElementById('cancelPick').onclick = () => { resultsEl.innerHTML = ''; };
+  document.getElementById('confirmPick').onclick = guard(async () => {
+    const { error } = await sb.rpc('submit_slot_pick', { p_week: currentWeek.week_number, p_slot: slot, p_player_ref: id });
+    if(error){ showBanner(error.message); return; }
+    await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadRecentWeek()]);
+    renderShell();
+  });
+}
+
+async function renderStandings(body){
+  body.innerHTML = `<div class="center">Loading standings…</div>`;
+  const { data: lastFinalized } = await sb.from('weeks').select('week_number')
+    .eq('is_finalized', true).order('week_number', { ascending: false }).limit(1).maybeSingle();
+
+  let topScoresHTML = '', eliminatedHTML = '';
+  if(lastFinalized){
+    const w = lastFinalized.week_number;
+    const { data: picksThatWeek } = await sb.from('picks')
+      .select('player_id, score, profiles(display_name)').eq('week_number', w);
+    const totals = {};
+    (picksThatWeek || []).forEach(p => {
+      if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', total: 0 };
+      totals[p.player_id].total += Number(p.score) || 0;
+    });
+    const top5 = Object.values(totals).sort((a,b) => b.total - a.total).slice(0, 5);
+    topScoresHTML = `
+      <div class="card">
+        <h3>Week ${w} high scores</h3>
+        ${top5.map(t => `<div class="lb-row"><span>${esc(t.name)}</span><b style="color:var(--pending);">${t.total} pts</b></div>`).join('') || '<p>No scores yet.</p>'}
+      </div>`;
+
+    const { data: eliminated } = await sb.from('profiles').select('display_name')
+      .eq('is_approved', true).eq('eliminated_week', w);
+    eliminatedHTML = `
+      <div class="card">
+        <h3>Eliminated week ${w}</h3>
+        ${(eliminated||[]).map(e => `<div class="lb-row"><span>${esc(e.display_name)}</span><span class="pill elim">OUT</span></div>`).join('') || '<p>No one was eliminated this week.</p>'}
+      </div>`;
+  }
+
+  const { data } = await sb.from('profiles').select('display_name, alive, eliminated_week').eq('is_approved', true);
+  const rows = (data || []).sort((a,b) =>
+    (b.alive - a.alive) || ((b.eliminated_week ?? 999) - (a.eliminated_week ?? 999)) || a.display_name.localeCompare(b.display_name)
+  );
+  body.innerHTML = `
+    ${topScoresHTML}
+    ${eliminatedHTML}
+    <div class="card">
+      <h3>Survivors</h3>
+      ${rows.map(r => `
+        <div class="lb-row">
+          <span>${esc(r.display_name)}</span>
+          <span class="pill ${r.alive ? 'alive' : 'elim'}">${r.alive ? 'ALIVE' : `OUT · WK ${r.eliminated_week}`}</span>
+        </div>`).join('') || '<p>No approved players yet.</p>'}
+    </div>`;
+}
+
+async function renderPrizes(body){
+  body.innerHTML = `<div class="center">Loading…</div>`;
+  const [{ data: settings }, { count }, { count: aliveCount }, { count: secondChanceCount }] = await Promise.all([
+    sb.from('league_settings').select('*').eq('id', 1).single(),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('is_approved', true).eq('alive', true),
+    sb.from('profiles').select('id', { count: 'exact', head: true }).eq('second_chance_used', true)
+  ]);
+  const fee = settings.entry_fee || 0;
+  const total = fee * ((count || 0) + (secondChanceCount || 0));
+  const organizer = total * settings.organizer_pct / 100;
+  const weekly = total * settings.weekly_pct / 100;
+  const grand = total * settings.grand_pct / 100;
+  const weeks = settings.weekly_prize_end_week || 1;
+  const perWeek = weekly / weeks;
+  const survivors = aliveCount || 0;
+  const perSurvivor = survivors > 0 ? grand / survivors : 0;
+  const money = n => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+  body.innerHTML = `
+    <div class="card">
+      <h3>Prize pool</h3>
+      <div class="stat"><span>Entry fee</span><b>${fee ? money(fee) : '—'}</b></div>
+      <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
+      ${secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
+      <div class="stat"><span>Total pool</span><b>${money(total)}</b></div>
+      <div class="divider"></div>
+      <div class="stat"><span>Grand prize pool (${settings.grand_pct}%)</span><b>${money(grand)}</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${money(perSurvivor)} each` : '—'}</b></div>
+      <div class="stat"><span>Weekly prizes (${settings.weekly_pct}%)</span><b>${money(weekly)} total</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${money(perWeek)}</b></div>
+      <div class="note">Weekly prizes are paid weeks 1 through ${weeks}. Totals update automatically as more players are approved.</div>
+      <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
+      <div class="note">For transparency: ${settings.organizer_pct}% of entry fees (${money(organizer)}) goes toward running the league — hosting, tools, and the time spent operating it week to week.</div>
+    </div>`;
+}
+
+// Edit/add entries here as new questions come up — no other code needs to change.
+const FAQ_ITEMS = [
+  { q: "Do I need a new sign-in link every time I want to lock in a pick?",
+    a: "No — once you click your link, this device stays signed in. You'll only need a new one if you switch devices or browsers, sign out, or clear your browser's data." },
+  { q: "Can I change a pick after I lock it in?",
+    a: "No. Locking a pick is permanent — there's no undo, for you or the commissioner — so double check before confirming." },
+  { q: "What happens if I don't finish my full lineup before the week closes?",
+    a: "An incomplete team (missing even one of the 7 slots) is treated as an elimination, the same as a team that didn't clear the point threshold." },
+  { q: "Can I use the same NFL player twice?",
+    a: "No — once you've used a player in any week, they're off-limits for the rest of the season." },
+  { q: "What if my chosen player's game already started?",
+    a: "You can't pick them. The search only shows players whose game hasn't kicked off yet, and bye-week teams are excluded automatically." },
+  { q: "What score do I need to survive each week?",
+    a: "Your full team's combined score across all 7 starters (full-PPR scoring) needs to clear that week's threshold — not any single player's score on its own. Check the Picks tab for this week's number." },
+  { q: "How is the grand prize paid out?",
+    a: "100% of the grand prize pool goes to whoever is still alive at the very end. If more than one player survives to the finish, it's split evenly between them." },
+  { q: "How are weekly prizes decided?",
+    a: "Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes run weeks 1 through 10, with the pool split evenly across those 10 weeks." },
+  { q: "Is my email visible to other players?",
+    a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
+  { q: "What if an NFL game gets cancelled or postponed?",
+    a: "A cancelled game, or one pushed to a later week entirely, counts as 0 points for that one slot — the rest of your lineup can still carry the team. A reschedule that stays within the same week (like Sunday to Monday) is scored normally. This isn't something the app tracks for you — keep an eye on news for whoever you've picked." },
+  { q: "I got eliminated — is there any way back in?",
+    a: "If you're eliminated in week 5 or earlier, a second-chance buy-in may be available (same entry fee, added to the prize pool) — check with the commissioner. You keep every player you've already used; they stay off-limits going forward. This option isn't available once you're past week 5." },
+];
+
+function renderFAQ(body){
+  body.innerHTML = `
+    <div class="card">
+      <h3>FAQ</h3>
+      ${FAQ_ITEMS.map((item, i) => `
+        <div class="faq-item">
+          <div class="faq-q" data-i="${i}">${esc(item.q)}</div>
+          <div class="faq-a" id="faq-a-${i}">${esc(item.a)}</div>
+        </div>`).join('')}
+    </div>`;
+  document.querySelectorAll('.faq-q').forEach(el => {
+    el.onclick = () => {
+      const ans = document.getElementById(`faq-a-${el.dataset.i}`);
+      const open = ans.classList.toggle('open');
+      el.classList.toggle('open', open);
+    };
+  });
+}
+
+function renderLegend(body){
+  body.innerHTML = `
+    <div class="card">
+      <h3>The Legend</h3>
+      <img class="legend-portrait" src="images/Sweaty-Sharpe-800x1200.jpg" alt="Sweaty Sharpe">
+      <p>Once upon a time in the dark underbelly of sports betting, there lived a pure degen named Sharpe. Bills stacked higher than his confidence, parlays crushed him weekly, and every "lock of the century" his best friend Skip would pass along, somehow found a way to cook him. He was down bad — living on leftover pizza and pure hopium.</p>
+      <p>Then one desperate night, while hammering a ridiculous 12-leg same-game parlay with his last $47, something weird happened. The more nervous he got, the more he started sweating. Beads poured down his bald head. His glasses fogged. And somehow… the ticket cashed.</p>
+      <p>Curious, he tested the theory. Bigger sweat = bigger wins. He started deliberately stressing himself out before every degen play — pacing, overthinking, letting the anxiety cook until he was glistening like a rotisserie chicken. The sweat became his edge.</p>
+      <p>The legend peaked during the biggest NFL Survivor contest of the year. $100 buy-in with a $1.5M grand prize. Week after week, Sharpe poured sweat into every pick. By the final week he was the last man standing, walking away with a life-changing pile of cash while the rest of the field left in tears.</p>
+      <p>Now, years later, Sweaty Sharpe still wakes up every morning and mentally replays that final Survivor pick. The moment the last game ended, the sweat poured, and the money hit. He lives for that feeling — and he wants every other degen to chase it with him.</p>
+      <div class="legend-quote">"Sometimes the only edge you need is a full forehead of pure, uncut anxiety."<br>— Sweaty Sharpe</div>
+    </div>`;
+}
+
+async function renderAdmin(body){
+  body.innerHTML = `<div class="center">Loading…</div>`;
+  const [{ data: settings }, { data: players }, { data: weekRow }] = await Promise.all([
+    sb.from('league_settings').select('*').eq('id', 1).single(),
+    sb.from('profiles').select('id, display_name, is_approved, alive, eliminated_week, second_chance_used, is_commissioner').order('display_name'),
+    currentWeek ? sb.from('weeks').select('is_finalized').eq('week_number', currentWeek.week_number).single() : Promise.resolve({data:null})
+  ]);
+  const weekForScores = currentWeek ? currentWeek.week_number : 1;
+  const isFinalized = weekRow?.is_finalized || false;
+
+  let scoresTableHTML;
+  if(isFinalized){
+    const { data: picksThatWeek } = await sb.from('picks')
+      .select('player_id, score, profiles(display_name, alive)').eq('week_number', weekForScores);
+    const totals = {};
+    (picksThatWeek || []).forEach(p => {
+      if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', total: 0, alive: p.profiles?.alive };
+      totals[p.player_id].total += Number(p.score) || 0;
+    });
+    const rows = Object.values(totals).sort((a,b) => b.total - a.total);
+    scoresTableHTML = `
+      <div class="tablewrap"><table>
+        <tr><th>Player</th><th>Total</th><th>Result</th></tr>
+        ${rows.map(r => `<tr><td>${esc(r.name)}</td><td>${r.total}</td><td><span class="pill ${r.alive?'alive':'elim'}">${r.alive?'ALIVE':'OUT'}</span></td></tr>`).join('')}
+      </table></div>
+      <div class="note">This week is finalized — showing final totals. Editing scores or re-finalizing (after fixing a mistake) is still possible below.</div>`;
+  } else {
+    const { data: picksForWeek } = await sb.from('picks')
+      .select('id, slot, nfl_player_name, score, week_number, profiles(display_name)')
+      .eq('week_number', weekForScores)
+      .order('slot');
+    scoresTableHTML = picksForWeek && picksForWeek.length ? `
+      <div class="tablewrap"><table>
+        <tr><th>Player</th><th>Slot</th><th>Pick</th><th>Score</th></tr>
+        ${picksForWeek.map(pk => `
+          <tr>
+            <td>${esc(pk.profiles?.display_name || '')}</td>
+            <td>${pk.slot}</td>
+            <td>${esc(pk.nfl_player_name)}</td>
+            <td><input type="number" step="0.1" class="scoreInput" data-id="${pk.id}" value="${pk.score ?? ''}" style="margin:0;width:80px;padding:6px 8px;"/></td>
+          </tr>`).join('')}
+      </table></div>` : '<p>No picks submitted for this week yet.</p>';
+  }
+
+  body.innerHTML = `
+    <div class="card">
+      <h3>NFL data sync</h3>
+      <p>Roster and schedule syncing runs via a scheduled server-side job (set up once via Supabase's CLI — see Step 6 in the setup doc), not from a button in this app. Supabase blocks the kind of key this would need from ever being used in a browser, so there's no safe in-app version of this.</p>
+    </div>
+
+    <div class="card">
+      <h3>League settings</h3>
+      <label>Weekly point threshold (combined team total)</label>
+      <input id="s_threshold" type="number" value="${settings.weekly_threshold}" />
+      <label>Signup closes at</label>
+      <input id="s_signup" type="datetime-local" value="${settings.signup_closes_at ? settings.signup_closes_at.slice(0,16) : ''}" />
+      <label>Entry fee</label>
+      <input id="s_fee" type="number" step="0.01" value="${settings.entry_fee ?? ''}" />
+      <label>Organizer % / Weekly % / Grand %</label>
+      <div class="row">
+        <input id="s_org" type="number" value="${settings.organizer_pct}" style="width:auto;flex:1;"/>
+        <input id="s_week" type="number" value="${settings.weekly_pct}" style="width:auto;flex:1;"/>
+        <input id="s_grand" type="number" value="${settings.grand_pct}" style="width:auto;flex:1;"/>
+      </div>
+      <label>Weekly prizes paid through week</label>
+      <input id="s_wpew" type="number" value="${settings.weekly_prize_end_week ?? ''}" />
+      <button id="saveSettings" style="margin-top:14px;">Save league settings</button>
+    </div>
+
+    <div class="card">
+      <h3>Players</h3>
+      ${(() => {
+        const commissionerCount = players.filter(x => x.is_commissioner).length;
+        return players.map(p => {
+          const eligibleForSecondChance = !p.alive && !p.second_chance_used && p.eliminated_week && p.eliminated_week <= 5;
+          const isLastCommissioner = p.is_commissioner && commissionerCount <= 1;
+          return `
+          <div class="lb-row">
+            <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''} ${p.is_commissioner ? `<span class="pill">Commish</span>` : ''}</span>
+            <span class="row" style="gap:6px;width:auto;">
+              ${eligibleForSecondChance ? `<button class="small secondary" data-secondchance="${p.id}">2nd Chance</button>` : ''}
+              <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
+              <button class="small secondary" data-admin="${p.id}" data-current="${p.is_commissioner}" ${isLastCommissioner ? 'disabled title="Can\'t revoke the last remaining commissioner"' : ''}>${p.is_commissioner ? 'Revoke admin' : 'Make admin'}</button>
+            </span>
+          </div>`;
+        }).join('') || '<p>No players yet.</p>';
+      })()}
+    </div>
+
+    <div class="card">
+      <h3>Week ${weekForScores} scores</h3>
+      ${scoresTableHTML}
+      ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
+      <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
+      <div id="finalizeConfirm"></div>
+    </div>
+  `;
+
+  document.querySelectorAll('[data-secondchance]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const { error } = await sb.rpc('commissioner_grant_second_chance', { p_player_id: btn.dataset.secondchance });
+      if(error) throw error;
+      showBanner('Second chance granted.');
+      renderAdmin(body);
+    });
+  });
+
+  document.getElementById('saveSettings').onclick = guard(async () => {
+    const signup = document.getElementById('s_signup').value;
+    await sb.rpc('commissioner_update_weekly_threshold', { p_threshold: parseFloat(document.getElementById('s_threshold').value) });
+    await sb.rpc('commissioner_set_signup_deadline', { p_deadline: signup ? new Date(signup).toISOString() : null });
+    await sb.rpc('commissioner_update_prize_settings', {
+      p_entry_fee: parseFloat(document.getElementById('s_fee').value) || null,
+      p_organizer_pct: parseFloat(document.getElementById('s_org').value),
+      p_weekly_pct: parseFloat(document.getElementById('s_week').value),
+      p_grand_pct: parseFloat(document.getElementById('s_grand').value),
+      p_weekly_prize_end_week: parseInt(document.getElementById('s_wpew').value) || null
+    });
+    renderAdmin(body);
+  });
+
+  document.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const id = btn.dataset.approve;
+      const current = btn.dataset.current === 'true';
+      const { error } = await sb.rpc('commissioner_set_player_approved', { p_player_id: id, p_approved: !current });
+      if(error) throw error;
+      renderAdmin(body);
+    });
+  });
+
+  document.querySelectorAll('[data-admin]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const id = btn.dataset.admin;
+      const current = btn.dataset.current === 'true';
+      const { error } = await sb.rpc(current ? 'commissioner_revoke_admin' : 'commissioner_grant_admin', { p_player_id: id });
+      if(error) throw error;
+      showBanner(current ? 'Admin revoked.' : 'Admin granted.');
+      renderAdmin(body);
+    });
+  });
+
+  const saveScoresBtn = document.getElementById('saveScores');
+  if(saveScoresBtn){
+    saveScoresBtn.onclick = guard(async () => {
+      const inputs = document.querySelectorAll('.scoreInput');
+      for(const inp of inputs){
+        const val = inp.value === '' ? null : parseFloat(inp.value);
+        const { error } = await sb.rpc('commissioner_set_score', { p_pick_id: inp.dataset.id, p_score: val });
+        if(error) throw error;
+      }
+      showBanner('Scores saved.');
+      renderAdmin(body);
+    });
+  }
+  const finalizeBtn = document.getElementById('finalizeWeek');
+  if(finalizeBtn){
+    finalizeBtn.onclick = () => {
+      document.getElementById('finalizeConfirm').innerHTML = `
+        <div class="confirm-box">
+          <p style="color:var(--text);">Finalize week ${weekForScores}? This eliminates anyone below threshold or with an incomplete team.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="cancelFinalize" style="flex:1;">Cancel</button>
+            <button class="small danger" id="confirmFinalize" style="flex:1;">Confirm finalize</button>
+          </div>
+        </div>`;
+      document.getElementById('cancelFinalize').onclick = () => { document.getElementById('finalizeConfirm').innerHTML = ''; };
+      document.getElementById('confirmFinalize').onclick = guard(async () => {
+        const { error } = await sb.rpc('commissioner_finalize_week', { p_week: weekForScores });
+        if(error) throw error;
+        showBanner(`Week ${weekForScores} finalized.`);
+        await loadAllData();
+        renderShell();
+      });
+    };
+  }
+}
+
+// ---------- INIT ----------
+sb.auth.onAuthStateChange(async (event, s) => {
+  if(s){
+    session = s;
+    await loadAllData();
+    screen = 'app';
+    render();
+  }
+});
+
+(async () => {
+  const { data: { session: existing } } = await sb.auth.getSession();
+  if(existing){
+    session = existing;
+    await loadAllData();
+    screen = 'app';
+  } else {
+    screen = 'auth';
+  }
+  render();
+})();
+</script>
+</body>
+</html>
