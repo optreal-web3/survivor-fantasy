@@ -34,7 +34,7 @@ jobs:
         run: |
           TIMESTAMP=$(date -u +'%Y-%m-%dT%H-%M-%SZ')
           echo "BACKUP_FILE=backup-${TIMESTAMP}.sql" >> "$GITHUB_ENV"
-          pg_dump "$DATABASE_URL" \
+          /usr/lib/postgresql/17/bin/pg_dump "$DATABASE_URL" \
             --schema=public \
             --no-owner \
             --no-privileges \
