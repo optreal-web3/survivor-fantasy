@@ -161,7 +161,8 @@ let hsWeekIndex = -1; // index into finalizedWeekNumbers currently shown on the 
 const weekTop5Cache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,total}] array, memoized for the session
 const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,position,team,score}] NFL-player array, memoized
 let screen = 'loading', activeTab = 'hub';
-let magicLinkSent = false;
+let otpSent = false, pendingEmail = null, pendingName = null, otpCooldownUntil = 0;
+let otpResendTimer = null; // interval id for the "Resend code" countdown on the code-entry screen
 let nflTeams = []; // reference data: all 32 teams (code/name/division/colors/logo_path), loaded once per session
 
 const app = document.getElementById('app');
@@ -513,23 +514,39 @@ async function loadContestData(){
 }
 
 // ---------- AUTH ----------
-async function sendMagicLink(email, displayName){
+// Switched from clickable magic links to a typed 6-digit code (2026-09-14):
+// a magic link could be silently consumed by an email client's own "link
+// preview" prefetch before the player ever tapped it, which looked like a
+// dead/looping sign-in with no clear cause (see supabase-setup.md). A typed
+// code can't be prefetched -- nothing but the player ever "enters" it.
+// signInWithOtp itself is unchanged by this switch; only the Magic Link
+// email template (Supabase dashboard, not this file) and how we verify the
+// response differ. sendLoginCode also powers "Resend code" -- same call,
+// a fresh code each time.
+async function sendLoginCode(email, displayName){
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: {
-      emailRedirectTo: window.location.origin + window.location.pathname,
-      data: { display_name: displayName }
-    }
+    options: { data: { display_name: displayName } }
   });
   if(error) throw error;
-  magicLinkSent = true;
+  pendingEmail = email;
+  pendingName = displayName;
+  otpSent = true;
+  otpCooldownUntil = Date.now() + 60000; // matches Supabase's default per-email resend cooldown
   render();
+}
+async function verifyLoginCode(code){
+  const { error } = await sb.auth.verifyOtp({ email: pendingEmail, token: code, type: 'email' });
+  if(error) throw error;
+  // onAuthStateChange (below) picks up the new session and moves us into the app.
 }
 async function signOut(){
   await sb.auth.signOut();
   session = null; profile = null; contests = []; myEntries = {};
   currentContestId = null; currentContest = null; currentEntry = null;
-  screen = 'auth'; activeTab = 'hub'; magicLinkSent = false;
+  screen = 'auth'; activeTab = 'hub';
+  otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
+  clearInterval(otpResendTimer);
   applyFlairBackground();
   render();
 }
@@ -545,36 +562,82 @@ function render(){
 }
 
 function renderAuth(){
-  if(magicLinkSent){
-    app.innerHTML = `
-      <div class="app-header"><img class="avatar-circle" src="images/Sweaty-Sharpe-500x500.jpg" alt="Sweaty Sharpe"><div class="brand-title"><div class="brand-script">Sweaty Sharpe's</div><div class="brand-block">Survivor Fantasy</div></div></div>
-      <div class="card">
-        <h3>Check your email</h3>
-        <p>We sent you a sign-in link. (Check your spam folder if not in Inbox.) Open it on this device to come back here signed in.</p>
-        <p>Each link works once — if you tap it and land back on the sign-in screen with a message above, just request a new one below rather than tapping the same link again.</p>
-        <button class="secondary" id="backBtn" style="margin-top:14px;">Use a different email</button>
-      </div>`;
-    document.getElementById('backBtn').onclick = () => { magicLinkSent = false; render(); };
-    return;
-  }
+  if(otpSent){ return renderOtpEntry(); }
   app.innerHTML = `
     <div class="app-header"><img class="avatar-circle" src="images/Sweaty-Sharpe-500x500.jpg" alt="Sweaty Sharpe"><div class="brand-title"><div class="brand-script">Sweaty Sharpe's</div><div class="brand-block">Survivor Fantasy</div></div></div>
-    <p>Sign up once, then join any contest from the Hub. Most contests: pick a full lineup each week and clear that contest's point threshold or you're out. A player you've used is only off-limits within that one contest -- the same roster works across every contest you join.</p>
+    <p>Enter your name and email below and we'll send a 6-digit one-time code to sign in — no password to remember. Codes expire after 10 minutes, so check your inbox once you hit send (and check your spam folder too — mark it "Not spam" if it lands there instead).</p>
     <div class="card">
       <h3>Sign in / join</h3>
       <label>Display name (shown to other players — your email never is)</label>
       <input id="nameInput" placeholder="e.g. Ace" />
       <label>Email</label>
       <input id="emailInput" type="email" placeholder="you@example.com" />
-      <button id="sendBtn" style="margin-top:16px;">Send sign-in link</button>
+      <button id="sendBtn" style="margin-top:16px;">Send code</button>
       <div id="authErr" class="note" style="display:none;"></div>
     </div>`;
   document.getElementById('sendBtn').onclick = guard(async () => {
     const name = document.getElementById('nameInput').value.trim();
     const email = document.getElementById('emailInput').value.trim();
     if(!name || !email){ showBanner('Enter both a display name and an email.'); return; }
-    await sendMagicLink(email, name);
+    await sendLoginCode(email, name);
   });
+}
+
+// Code-entry screen shown right after a code is sent (or resent). Keeps
+// pendingEmail/pendingName around so "Resend code" doesn't need the player
+// to retype anything, and disables the resend button behind a countdown
+// matching Supabase's own per-email rate limit so a too-fast resend tap
+// doesn't just trade one confusing error for another.
+function renderOtpEntry(){
+  app.innerHTML = `
+    <div class="app-header"><img class="avatar-circle" src="images/Sweaty-Sharpe-500x500.jpg" alt="Sweaty Sharpe"><div class="brand-title"><div class="brand-script">Sweaty Sharpe's</div><div class="brand-block">Survivor Fantasy</div></div></div>
+    <div class="card">
+      <h3>Enter your code</h3>
+      <p>We sent a 6-digit code to <strong>${esc(pendingEmail)}</strong>. Check your spam folder and mark it "Not spam" if it's not in your inbox within a minute or two. The code expires in 10 minutes.</p>
+      <label>6-digit code</label>
+      <input id="otpInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" autocomplete="one-time-code" />
+      <button id="verifyBtn" style="margin-top:16px;">Verify &amp; sign in</button>
+      <button class="secondary" id="resendBtn" style="margin-top:10px;">Resend code</button>
+      <button class="secondary" id="backBtn" style="margin-top:10px;">Use a different email</button>
+    </div>`;
+
+  const input = document.getElementById('otpInput');
+  const verifyBtn = document.getElementById('verifyBtn');
+  const resendBtn = document.getElementById('resendBtn');
+  input.focus();
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 6); });
+  input.addEventListener('keydown', (e) => { if(e.key === 'Enter') verifyBtn.click(); });
+
+  clearInterval(otpResendTimer);
+  const tickResend = () => {
+    const remaining = Math.ceil((otpCooldownUntil - Date.now()) / 1000);
+    if(remaining > 0){
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Resend code (${remaining}s)`;
+    } else {
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Resend code';
+      clearInterval(otpResendTimer);
+    }
+  };
+  tickResend();
+  otpResendTimer = setInterval(tickResend, 1000);
+
+  verifyBtn.onclick = guard(async () => {
+    const code = input.value.trim();
+    if(code.length !== 6){ showBanner('Enter the 6-digit code from your email.'); return; }
+    await verifyLoginCode(code);
+  });
+  resendBtn.onclick = guard(async () => {
+    if(resendBtn.disabled) return;
+    await sendLoginCode(pendingEmail, pendingName);
+    showBanner('New code sent.');
+  });
+  document.getElementById('backBtn').onclick = () => {
+    clearInterval(otpResendTimer);
+    otpSent = false; pendingEmail = null; pendingName = null;
+    render();
+  };
 }
 
 // ---------- HUB (lobby of contests) ----------
@@ -1304,8 +1367,8 @@ function faqItems(contest){
       a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
     { q: "What's the difference between the Hub and a contest?",
       a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
-    { q: "Do I need a new sign-in link every time I want to lock in a pick?",
-      a: "No — once you click your link, this device stays signed in. You'll only need a new one if you switch devices or browsers, sign out, or clear your browser's data." },
+    { q: "Do I need to enter a new code every time I want to lock in a pick?",
+      a: "No — once you enter a code, this device stays signed in. You'll only need to sign in again if you switch devices or browsers, sign out, or clear your browser's data." },
     { q: "Can I change a pick after I lock it in?",
       a: "No. Locking a pick is permanent — there's no undo, for you or the admin — so double check before confirming." },
     { q: "What happens if I don't finish my full lineup before the week closes?",
@@ -1603,31 +1666,12 @@ sb.auth.onAuthStateChange(async (event, s) => {
 });
 
 (async () => {
-  // Supabase's own /verify redirect lands back here even when the magic
-  // link FAILED -- most commonly because the link had already been used.
-  // In practice that isn't always the player double-clicking: Supabase
-  // auth logs for this project show the same link getting hit twice from
-  // the same device/IP a few seconds apart (very likely an email client's
-  // own "link preview" fetch consuming the one-time token before the
-  // player's real tap -- a known class of magic-link issue, see
-  // https://supabase.com/docs/guides/troubleshooting/pkce-flow-errors-cannot-parse-response-or-zgotmplz-in-magic-link-emails-433665
-  // for the general pattern). On failure the redirect carries
-  // #error=...&error_code=...&error_description=... instead of an access
-  // token, and without handling it here the app just silently fell through
-  // to a blank sign-in screen -- indistinguishable from the link never
-  // having done anything at all, which is exactly the "clicked the link,
-  // back on the sign-in page, loop" reports have described. Surface it
-  // instead so the player knows to request a fresh link rather than
-  // re-tapping the dead one.
-  const errSource = window.location.hash.includes('error=') ? window.location.hash.slice(1)
-    : (window.location.search.includes('error=') ? window.location.search.slice(1) : null);
-  if(errSource){
-    const errParams = new URLSearchParams(errSource);
-    const desc = errParams.get('error_description') || 'That sign-in link is invalid or has already been used.';
-    showBanner(`${desc} Request a new sign-in link below — each one only works for a single click.`);
-    history.replaceState(null, '', window.location.pathname);
-  }
-
+  // Pre-OTP-switch (2026-09-14), this init block also parsed a possible
+  // #error=... redirect hash from Supabase's magic-link /verify endpoint.
+  // That's no longer reachable now that sign-in is a typed code verified
+  // via verifyOtp() -- there's no redirect step for Supabase to fail on.
+  // Any verification failure now comes back as a normal error from
+  // verifyOtp() itself, shown inline on the code-entry screen.
   const { data: { session: existing } } = await sb.auth.getSession();
   if(existing){
     session = existing;
