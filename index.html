@@ -28,10 +28,11 @@
     --pending:#8B5CF6; --pending-dim:rgba(139,92,246,0.12);
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
+    --bg-grad-end:#242424;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
-  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:radial-gradient(circle at 15% 0%, rgba(var(--purple-rgb),0.08), transparent 40%),radial-gradient(circle at 85% 10%, rgba(var(--purple-rgb),0.06), transparent 35%);}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-grad-end) 100%);background-attachment:fixed;}
   .wrap{max-width:640px;margin:0 auto;padding:18px 14px 100px;width:100%;}
   h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
   h1{font-size:26px;line-height:1.15;}
@@ -112,10 +113,10 @@
   .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
   .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
   .app-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:14px;}
-  .app-header .brand-icon{width:200px;height:200px;object-fit:contain;display:block;}
+  .app-header .brand-icon{width:150px;height:150px;object-fit:contain;display:block;}
   .app-header.hub-header .brand-icon{width:250px;height:250px;}
-  .app-header h1{font-size:19px;line-height:1.2;}
-  @media (max-width:400px){ .app-header{gap:6px;margin-bottom:10px;} .app-header h1{font-size:15px;} .app-header .brand-icon{width:150px;height:150px;} .app-header.hub-header .brand-icon{width:180px;height:180px;} }
+  .app-header h1{font-size:22px;line-height:1.2;}
+  @media (max-width:400px){ .app-header{gap:6px;margin-bottom:10px;} .app-header h1{font-size:22px;} .app-header .brand-icon{width:130px;height:130px;} .app-header.hub-header .brand-icon{width:180px;height:180px;} }
   .name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .icon-btn{width:26px;height:26px;padding:0;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text-dim);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .icon-btn svg{width:14px;height:14px;display:block;}
@@ -133,16 +134,15 @@
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
   .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
-  .hero-banner{position:relative;width:100%;height:20vh;height:clamp(110px,20dvh,480px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;margin-bottom:14px;}
+  .hero-banner{position:relative;width:100%;height:10vh;height:clamp(55px,10dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;margin-bottom:14px;}
   .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
-  .legend-portrait{float:left;width:156px;max-width:44%;height:auto;border-radius:8px;margin:2px 14px 10px 0;}
-  @media (max-width:400px){ .legend-portrait{width:126px;margin:2px 10px 8px 0;} }
   .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--purple);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--purple);background:var(--purple-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding:14px 10px 90px;} }
-  .back-link{background:rgba(var(--purple-rgb),0.1);border:1.5px solid var(--purple);color:var(--purple);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0 0 5px;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;animation:hubGlow 2.4s ease-in-out infinite;}
+  .back-link{background:rgba(var(--purple-rgb),0.1);border:1.5px solid var(--purple);color:var(--purple);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;animation:hubGlow 2.4s ease-in-out infinite;}
   .back-link:active{transform:translateY(1px);}
   @keyframes hubGlow{ 0%,100%{box-shadow:0 0 0 0 rgba(var(--purple-rgb),0.35);} 50%{box-shadow:0 0 10px 2px rgba(var(--purple-rgb),0.55);} }
+  .contest-title-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:nowrap;max-width:100%;}
 </style>
 </head>
 <body>
@@ -216,6 +216,13 @@ function teamByCode(code){ return nflTeams.find(t => t.code === code) || null; }
 // (where a fixed-opacity overlay has the least natural contrast) and back
 // down toward the extremes (near-black/near-white, where a light touch is
 // already plenty visible).
+// Floor raised 2026-09-14: several teams' primary_hex sits at a pure
+// extreme (#000000 for ATL/CAR/CIN/LV/PIT, a saturated low-luminance red
+// for KC), which drove distanceFromExtreme toward 0 and left the star
+// pattern rendering at (or near) the old 0.05 floor -- effectively
+// invisible against a same-color background. The floor/scale below were
+// raised so even the extreme-color case still shows a clearly visible,
+// still-subtle sparkle.
 function heroTextureDataURI(hex){
   const h = (hex || '').replace('#', '');
   const r = parseInt(h.substring(0, 2), 16) || 0;
@@ -224,7 +231,7 @@ function heroTextureDataURI(hex){
   const brightness = (r * 299 + g * 587 + b * 114) / 1000; // 0 (black) - 255 (white)
   const light = brightness > 150;
   const distanceFromExtreme = light ? (255 - brightness) : brightness; // 0-~150
-  const opacity = Math.min(0.05 + (distanceFromExtreme / 150) * 0.09, 0.14).toFixed(2);
+  const opacity = Math.min(0.09 + (distanceFromExtreme / 150) * 0.08, 0.17).toFixed(2);
   const fill = light ? '#000000' : '#ffffff';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><g transform="translate(8,8)" fill="${fill}" fill-opacity="${opacity}"><path d="M12 0L14.2 9.8L24 12L14.2 14.2L12 24L9.8 14.2L0 12L9.8 9.8Z"/></g></svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
@@ -959,8 +966,10 @@ function renderContestShell(){
     <div class="app-header">
       <img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games">
       <div style="max-width:100%;">
-        <button class="back-link" id="backToHubBtn" type="button">‹ Hub</button>
-        <h1 style="margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(currentContest?.name || 'Contest')}</h1>
+        <div class="contest-title-row">
+          <h1 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc(currentContest?.name || 'Contest')}</h1>
+          <button class="back-link" id="backToHubBtn" type="button">‹ Hub</button>
+        </div>
       </div>
     </div>
     <div id="tabBody"></div>
@@ -1438,9 +1447,7 @@ function faqItems(contest){
     { q: "How are the Standings ranked?",
       a: "By cumulative points within that contest — the sum of your team's score across every finalized week — highest first. Anyone still alive is ranked above anyone eliminated. There's also a search box on Standings if you're just looking for one person." },
     { q: "Can I change my display name?",
-      a: "Yes — tap the pencil icon next to your name on the Hub, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
-    { q: "Can I show off my favorite NFL team?",
-      a: "Yes — tap the flair icon next to your name (Hub, Home, or Picks tab) to pick a team. It shows a small tag next to your name and gives the app a subtle background tint in your team's colors. Purely cosmetic and visible to other players." }
+      a: "Yes — tap the pencil icon next to your name on the Hub, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." }
   ];
 }
 
@@ -1468,15 +1475,13 @@ function renderLegend(body){
   body.innerHTML = `
     <div class="card">
       <h3>The Rise of Degen King Games</h3>
-      <img class="legend-portrait" src="images/degen-king-portrait.png" alt="Degen King">
       <p>In the chaotic, high-stakes taverns of the web3 frontier, where memories of gas wars rage and diamond hands clash with paper hands, a new startup was forged — not by a single monarch, but by the collective will of the DGEN DAO community.</p>
       <p>It began during one of those legendary late-nights of memecoin trading and vibe coding. A group of battle-hardened degens, tired of the same old yield farms and epic rug-pulls, started thinking bigger. They wanted something that combined the pure dopamine of on-chain speculation with the timeless thrill of competition and strategy. Someone cracked open a cold one, raised a frothy mug, and half-jokingly declared: "What if we started creating our own unique and innovative sports betting games, and give rise to the kingdom's Knights?"</p>
       <p>That joke became a mission. Members of the DGEN DAO stepped forward as the founding builders, artists, strategists, and memelords who had already proven their loyalty through countless governance votes, community raids, and all-nighters. Together they founded Degen King Games (DKG), a startup born not in a boardroom, but in the trenches of decentralized collaboration.</p>
       <p>At the heart of DKG sits the royal NFT Knights Collection — a limited set of digital relics that grant true virtual membership. Holding one of these NFTs is more than ownership; it is citizenship. Members gain exclusive access to the community's inner halls: private game modes, enhanced rewards, and unique utility that evolves with the ecosystem and DKG. Some NFTs unlock advantages in competitions, others grant cosmetic flexes or potential revenue-sharing privileges. In short, they turn holders from spectators into nobles of the realm.</p>
       <p>The flagship creation of Degen King Games is the Survivor Fantasy Challenge — a sharp, addictive twist on classic fantasy football. Instead of managing a full season roster week after week, players navigate a high-stakes elimination-style gauntlet. Each round brings brutal choices and unexpected upsets. Only the shrewdest, luckiest, and most resilient "survivors" claim the ultimate crown and the spoils that come with it.</p>
       <p>Degen King Games is not just another studio. It is a living experiment in community-owned entertainment — where the people who believed first become the architects, the NFT holders become the aristocracy, and every shipped game-build is another chapter in the ongoing saga of the DGEN DAO kingdom.</p>
-      <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real.</div>
-      <p style="text-align:center;color:var(--text);font-weight:700;">Welcome to the realm.</p>
+      <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real.<br>Welcome to the realm.</div>
     </div>`;
 }
 
