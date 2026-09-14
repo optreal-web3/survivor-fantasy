@@ -126,7 +126,8 @@
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
   .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
-  .hero-banner{width:100%;border-radius:10px;margin-bottom:14px;display:block;}
+  .hero-banner{width:100%;height:20vh;height:clamp(110px,20dvh,480px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:6px solid transparent;margin-bottom:14px;}
+  .hero-banner img{max-height:80%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
   .legend-portrait{float:left;width:156px;max-width:44%;height:auto;border-radius:8px;margin:2px 14px 10px 0;}
   @media (max-width:400px){ .legend-portrait{width:126px;margin:2px 10px 8px 0;} }
   .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--pending);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--pending);background:var(--pending-dim);border-radius:0 8px 8px 0;}
@@ -138,6 +139,7 @@
 </head>
 <body>
 <div id="flairBg" aria-hidden="true"></div>
+<div id="heroBanner"></div>
 <div class="wrap">
   <div id="banner"></div>
   <div id="app"><div class="center">Loading…</div></div>
@@ -163,7 +165,7 @@ const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,
 let screen = 'loading', activeTab = 'hub';
 let otpSent = false, pendingEmail = null, pendingName = null, otpCooldownUntil = 0;
 let otpResendTimer = null; // interval id for the "Resend code" countdown on the code-entry screen
-let nflTeams = []; // reference data: all 32 teams (code/name/division/colors/logo_path), loaded once per session
+let nflTeams = []; // reference data: all 32 teams (code/name/division/colors/hero_logo_path), loaded once per session
 
 const app = document.getElementById('app');
 const bannerEl = document.getElementById('banner');
@@ -218,15 +220,12 @@ function hexToRgba(hex, alpha){
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// Applies (or clears) the muted, app-wide background texture for the
-// current player's chosen flair team. Progressive enhancement: if that
-// team has a logo_path filled in (once logo files are uploaded to
-// images/flair/ and the row updated), tiles the actual logo at 150x150
-// with a color wash in the team's primary color layered behind it (so the
-// team color reads clearly even though a photographic logo doesn't carry
-// as much flat color as the abbreviation-tile fallback below); otherwise
-// falls back to the angled-abbreviation texture, which needs no image
-// assets at all. Called after profile loads/changes.
+// Applies (or clears) the muted, app-wide angled-abbreviation background
+// texture for the current player's chosen flair team. No image assets
+// needed. (Used to also have a real-logo tiling branch keyed on
+// `logo_path` -- that column is now `hero_logo_path` and powers the hero
+// banner below instead, so this always uses the abbreviation texture.)
+// Called after profile loads/changes.
 function applyFlairBackground(){
   const bg = document.getElementById('flairBg');
   if(!bg) return;
@@ -236,20 +235,31 @@ function applyFlairBackground(){
     bg.style.backgroundImage = '';
     return;
   }
-  if(team.logo_path){
-    const tint = hexToRgba(team.primary_hex, 0.4);
-    bg.style.backgroundImage = `url('images/flair/${team.logo_path}'), radial-gradient(circle at 20% 10%, ${tint}, transparent 60%)`;
-    bg.style.backgroundSize = '150px 150px, cover';
-    bg.style.backgroundRepeat = 'repeat, no-repeat';
-    bg.style.backgroundPosition = 'center, center';
-    bg.style.opacity = '0.4';
-  } else {
-    bg.style.backgroundImage = `url("${buildAbbrTileDataURI(team.code, team.primary_hex)}")`;
-    bg.style.backgroundSize = '120px 120px';
-    bg.style.backgroundRepeat = 'repeat';
-    bg.style.backgroundPosition = 'center';
-    bg.style.opacity = '0.6';
+  bg.style.backgroundImage = `url("${buildAbbrTileDataURI(team.code, team.primary_hex)}")`;
+  bg.style.backgroundSize = '120px 120px';
+  bg.style.backgroundRepeat = 'repeat';
+  bg.style.backgroundPosition = 'center';
+  bg.style.opacity = '0.6';
+}
+
+// Full-width hero banner: a solid block in the flair team's primary_hex,
+// a secondary_hex bottom accent stripe, and (once uploaded for that team)
+// a right-justified, height-cropped logo graphic pointed at by
+// hero_logo_path. Progressive per-team enhancement -- a team with no
+// hero_logo_path yet renders nothing here at all, same as before this
+// feature existed. Lives in the fixed #heroBanner mount just above .wrap
+// (outside its 640px max-width), so it's full-bleed on desktop as well as
+// mobile. Called after profile loads/changes, alongside
+// applyFlairBackground.
+function renderHeroBanner(){
+  const el = document.getElementById('heroBanner');
+  if(!el) return;
+  const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
+  if(!team || !team.hero_logo_path){
+    el.innerHTML = '';
+    return;
   }
+  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};"><img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}"></div>`;
 }
 
 // "Playing as <name>" header + its pencil-to-edit and flair-picker
@@ -260,9 +270,7 @@ function applyFlairBackground(){
 function playerNameHeaderHTML(){
   const team = profile.flair_team ? teamByCode(profile.flair_team) : null;
   const flairPill = team
-    ? (team.logo_path
-        ? `<img class="flair-icon" src="images/flair/${team.logo_path}" alt="${esc(team.code)}" title="${esc(team.name)}">`
-        : `<span class="flair-pill" style="--tile-color:${team.primary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>`)
+    ? `<span class="flair-pill" style="--tile-color:${team.primary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>`
     : '';
   return `
     <div class="week-label">Playing as</div>
@@ -303,12 +311,9 @@ function wireNameEdit(body){
     });
   };
 }
-// Flair picker: a grid of all 32 teams (grouped by division). Each tile
-// shows the team's actual logo thumbnail once its logo_path is filled in;
-// otherwise it just shows the team's abbreviation in its own color (see
-// applyFlairBackground for the same progressive-enhancement pattern on the
-// background texture). Renders into #flairEditArea, same toggle-open/
-// toggle-closed pattern as wireNameEdit.
+// Flair picker: a grid of all 32 teams (grouped by division), each tile
+// showing the team's abbreviation in its own primary color. Renders into
+// #flairEditArea, same toggle-open/toggle-closed pattern as wireNameEdit.
 function wireFlairPicker(body){
   const btn = document.getElementById('editFlairBtn');
   const area = document.getElementById('flairEditArea');
@@ -326,7 +331,7 @@ function renderFlairPicker(area){
     <div class="flair-division">
       <div class="flair-division-label">${esc(division)}</div>
       <div class="flair-grid">
-        ${teams.map(t => `<button type="button" class="flair-tile ${current === t.code ? 'selected' : ''}" data-code="${t.code}" style="--tile-color:${t.primary_hex};" title="${esc(t.name)}">${t.logo_path ? `<img src="images/flair/${t.logo_path}" alt="">` : ''}${esc(t.code)}</button>`).join('')}
+        ${teams.map(t => `<button type="button" class="flair-tile ${current === t.code ? 'selected' : ''}" data-code="${t.code}" style="--tile-color:${t.primary_hex};" title="${esc(t.name)}">${esc(t.code)}</button>`).join('')}
       </div>
     </div>`).join('');
 
@@ -351,6 +356,7 @@ async function saveFlair(code){
   if(error){ showBanner(error.message); return; }
   profile.flair_team = code;
   applyFlairBackground();
+  renderHeroBanner();
   showBanner(code ? 'Flair updated.' : 'Flair cleared.');
   render();
 }
@@ -385,7 +391,7 @@ async function loadMyEntries(){
   myEntries = {};
   (data || []).forEach(e => { myEntries[e.contest_id] = e; });
 }
-// Reference data (all 32 NFL teams' colors/division/logo_path) -- loaded
+// Reference data (all 32 NFL teams' colors/division/hero_logo_path) -- loaded
 // once per session and cached in nflTeams, not per-contest.
 async function loadNflTeams(){
   if(nflTeams.length) return;
@@ -396,6 +402,7 @@ async function loadAllData(){
   await loadProfile();
   await Promise.all([loadContests(), loadMyEntries(), loadNflTeams()]);
   applyFlairBackground();
+  renderHeroBanner();
 }
 
 // Contest-level: everything scoped to currentContestId, loaded once a
@@ -552,6 +559,7 @@ async function signOut(){
   otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
   clearInterval(otpResendTimer);
   applyFlairBackground();
+  renderHeroBanner();
   render();
 }
 
