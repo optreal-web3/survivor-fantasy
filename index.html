@@ -514,7 +514,7 @@ async function loadContestData(){
 }
 
 // ---------- AUTH ----------
-// Switched from clickable magic links to a typed 6-digit code (2026-09-14):
+// Switched from clickable magic links to a typed one-time code (2026-09-14):
 // a magic link could be silently consumed by an email client's own "link
 // preview" prefetch before the player ever tapped it, which looked like a
 // dead/looping sign-in with no clear cause (see supabase-setup.md). A typed
@@ -523,6 +523,10 @@ async function loadContestData(){
 // email template (Supabase dashboard, not this file) and how we verify the
 // response differ. sendLoginCode also powers "Resend code" -- same call,
 // a fresh code each time.
+// Note: the code's actual digit count is set server-side (Supabase Auth ->
+// Email OTP length) and isn't hardcoded here -- this project has sent both
+// 6 and 8 digits at different times, so the UI below accepts a range
+// instead of assuming one exact length.
 async function sendLoginCode(email, displayName){
   const { error } = await sb.auth.signInWithOtp({
     email,
@@ -565,7 +569,7 @@ function renderAuth(){
   if(otpSent){ return renderOtpEntry(); }
   app.innerHTML = `
     <div class="app-header"><img class="avatar-circle" src="images/Sweaty-Sharpe-500x500.jpg" alt="Sweaty Sharpe"><div class="brand-title"><div class="brand-script">Sweaty Sharpe's</div><div class="brand-block">Survivor Fantasy</div></div></div>
-    <p>Enter your name and email below and we'll send a 6-digit one-time code to sign in — no password to remember. Codes expire after 10 minutes, so check your inbox once you hit send (and check your spam folder too — mark it "Not spam" if it lands there instead).</p>
+    <p>Enter your name and email below and we'll send a one-time code to sign in — no password to remember. Codes expire after 10 minutes, so check your inbox once you hit send (and check your spam folder too — mark it "Not spam" if it lands there instead).</p>
     <div class="card">
       <h3>Sign in / join</h3>
       <label>Display name (shown to other players — your email never is)</label>
@@ -593,9 +597,9 @@ function renderOtpEntry(){
     <div class="app-header"><img class="avatar-circle" src="images/Sweaty-Sharpe-500x500.jpg" alt="Sweaty Sharpe"><div class="brand-title"><div class="brand-script">Sweaty Sharpe's</div><div class="brand-block">Survivor Fantasy</div></div></div>
     <div class="card">
       <h3>Enter your code</h3>
-      <p>We sent a 6-digit code to <strong>${esc(pendingEmail)}</strong>. Check your spam folder and mark it "Not spam" if it's not in your inbox within a minute or two. The code expires in 10 minutes.</p>
-      <label>6-digit code</label>
-      <input id="otpInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456" autocomplete="one-time-code" />
+      <p>We sent a one-time code to <strong>${esc(pendingEmail)}</strong>. Check your spam folder and mark it "Not spam" if it's not in your inbox within a minute or two. The code expires in 10 minutes.</p>
+      <label>One-time code</label>
+      <input id="otpInput" inputmode="numeric" pattern="[0-9]*" maxlength="10" placeholder="Enter code" autocomplete="one-time-code" />
       <button id="verifyBtn" style="margin-top:16px;">Verify &amp; sign in</button>
       <button class="secondary" id="resendBtn" style="margin-top:10px;">Resend code</button>
       <button class="secondary" id="backBtn" style="margin-top:10px;">Use a different email</button>
@@ -605,7 +609,7 @@ function renderOtpEntry(){
   const verifyBtn = document.getElementById('verifyBtn');
   const resendBtn = document.getElementById('resendBtn');
   input.focus();
-  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 6); });
+  input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, 10); });
   input.addEventListener('keydown', (e) => { if(e.key === 'Enter') verifyBtn.click(); });
 
   clearInterval(otpResendTimer);
@@ -625,7 +629,7 @@ function renderOtpEntry(){
 
   verifyBtn.onclick = guard(async () => {
     const code = input.value.trim();
-    if(code.length !== 6){ showBanner('Enter the 6-digit code from your email.'); return; }
+    if(code.length < 6){ showBanner('Enter the full code from your email.'); return; }
     await verifyLoginCode(code);
   });
   resendBtn.onclick = guard(async () => {
