@@ -33,7 +33,7 @@
   .scoreboard .week{font-family:'Archivo Black',sans-serif;font-size:32px;color:var(--pending);line-height:1;}
   .scoreboard .week-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;width:100%;}
-  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.06), rgba(139,92,246,0.05));box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
+  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.08), rgba(139,92,246,0.06)), var(--surface);box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
   button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
   button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
@@ -114,13 +114,15 @@
   .icon-btn svg{width:14px;height:14px;display:block;}
   .icon-btn:active{transform:translateY(1px);}
   .flair-pill{font-size:10px;font-weight:800;padding:3px 8px;border-radius:5px;border:1px solid var(--tile-color,var(--border));color:var(--tile-color,var(--text-dim));white-space:nowrap;letter-spacing:0.4px;}
+  .flair-icon{width:25px;height:25px;border-radius:6px;object-fit:cover;flex:0 0 auto;border:1px solid var(--border);}
   .flair-division{margin-top:12px;}
   .flair-division:first-child{margin-top:0;}
   .flair-division-label{font-size:10px;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;}
   .flair-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
   @media (max-width:420px){ .flair-grid{grid-template-columns:repeat(3,1fr);} }
-  .flair-tile{border:1.5px solid var(--border);border-radius:8px;padding:9px 4px;font-family:'Inter',sans-serif;font-weight:800;font-size:12px;letter-spacing:0.3px;background:var(--surface-2);color:var(--tile-color,var(--text));width:100%;cursor:pointer;touch-action:manipulation;}
+  .flair-tile{border:1.5px solid var(--border);border-radius:8px;padding:9px 4px;font-family:'Inter',sans-serif;font-weight:800;font-size:12px;letter-spacing:0.3px;background:var(--surface-2);color:var(--tile-color,var(--text));width:100%;cursor:pointer;touch-action:manipulation;display:flex;align-items:center;justify-content:center;gap:5px;}
   .flair-tile.selected{border-color:var(--tile-color,var(--pending));box-shadow:0 0 0 1px var(--tile-color,var(--pending)) inset;}
+  .flair-tile img{width:18px;height:18px;border-radius:4px;object-fit:cover;flex:0 0 auto;}
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
   .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
@@ -205,12 +207,25 @@ function buildAbbrTileDataURI(code, hex){
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+// Converts a '#rrggbb' hex string to an 'rgba(r, g, b, alpha)' string, for
+// building a translucent color-tint layer from a team's primary_hex.
+function hexToRgba(hex, alpha){
+  const h = (hex || '').replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Applies (or clears) the muted, app-wide background texture for the
 // current player's chosen flair team. Progressive enhancement: if that
 // team has a logo_path filled in (once logo files are uploaded to
-// images/logos/ and the row updated), tiles the actual logo at very low
-// opacity; otherwise falls back to the angled-abbreviation texture above,
-// which needs no image assets at all. Called after profile loads/changes.
+// images/flair/ and the row updated), tiles the actual logo at 150x150
+// with a color wash in the team's primary color layered behind it (so the
+// team color reads clearly even though a photographic logo doesn't carry
+// as much flat color as the abbreviation-tile fallback below); otherwise
+// falls back to the angled-abbreviation texture, which needs no image
+// assets at all. Called after profile loads/changes.
 function applyFlairBackground(){
   const bg = document.getElementById('flairBg');
   if(!bg) return;
@@ -221,12 +236,17 @@ function applyFlairBackground(){
     return;
   }
   if(team.logo_path){
-    bg.style.backgroundImage = `url('images/logos/${team.logo_path}')`;
-    bg.style.backgroundSize = '96px 96px';
-    bg.style.opacity = '0.08';
+    const tint = hexToRgba(team.primary_hex, 0.4);
+    bg.style.backgroundImage = `url('images/flair/${team.logo_path}'), radial-gradient(circle at 20% 10%, ${tint}, transparent 60%)`;
+    bg.style.backgroundSize = '150px 150px, cover';
+    bg.style.backgroundRepeat = 'repeat, no-repeat';
+    bg.style.backgroundPosition = 'center, center';
+    bg.style.opacity = '0.4';
   } else {
     bg.style.backgroundImage = `url("${buildAbbrTileDataURI(team.code, team.primary_hex)}")`;
     bg.style.backgroundSize = '120px 120px';
+    bg.style.backgroundRepeat = 'repeat';
+    bg.style.backgroundPosition = 'center';
     bg.style.opacity = '0.6';
   }
 }
@@ -238,7 +258,11 @@ function applyFlairBackground(){
 // a narrow column.
 function playerNameHeaderHTML(){
   const team = profile.flair_team ? teamByCode(profile.flair_team) : null;
-  const flairPill = team ? `<span class="flair-pill" style="--tile-color:${team.primary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>` : '';
+  const flairPill = team
+    ? (team.logo_path
+        ? `<img class="flair-icon" src="images/flair/${team.logo_path}" alt="${esc(team.code)}" title="${esc(team.name)}">`
+        : `<span class="flair-pill" style="--tile-color:${team.primary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>`)
+    : '';
   return `
     <div class="week-label">Playing as</div>
     <div class="name-row">
@@ -278,11 +302,12 @@ function wireNameEdit(body){
     });
   };
 }
-// Flair picker: a grid of all 32 teams (grouped by division), grouped the
-// same way regardless of whether logo files exist yet -- each tile just
-// shows the team's abbreviation in its own color until a logo_path is
-// filled in for that team (see applyFlairBackground). Renders into
-// #flairEditArea, same toggle-open/toggle-closed pattern as wireNameEdit.
+// Flair picker: a grid of all 32 teams (grouped by division). Each tile
+// shows the team's actual logo thumbnail once its logo_path is filled in;
+// otherwise it just shows the team's abbreviation in its own color (see
+// applyFlairBackground for the same progressive-enhancement pattern on the
+// background texture). Renders into #flairEditArea, same toggle-open/
+// toggle-closed pattern as wireNameEdit.
 function wireFlairPicker(body){
   const btn = document.getElementById('editFlairBtn');
   const area = document.getElementById('flairEditArea');
@@ -300,7 +325,7 @@ function renderFlairPicker(area){
     <div class="flair-division">
       <div class="flair-division-label">${esc(division)}</div>
       <div class="flair-grid">
-        ${teams.map(t => `<button type="button" class="flair-tile ${current === t.code ? 'selected' : ''}" data-code="${t.code}" style="--tile-color:${t.primary_hex};" title="${esc(t.name)}">${esc(t.code)}</button>`).join('')}
+        ${teams.map(t => `<button type="button" class="flair-tile ${current === t.code ? 'selected' : ''}" data-code="${t.code}" style="--tile-color:${t.primary_hex};" title="${esc(t.name)}">${t.logo_path ? `<img src="images/flair/${t.logo_path}" alt="">` : ''}${esc(t.code)}</button>`).join('')}
       </div>
     </div>`).join('');
 
