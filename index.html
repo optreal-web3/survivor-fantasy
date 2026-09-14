@@ -16,26 +16,25 @@
     --alive:#4ADE80; --alive-dim:rgba(74,222,128,0.12);
     --elim:#F76464; --elim-dim:rgba(247,100,100,0.12);
     --pending:#8B5CF6; --pending-dim:rgba(139,92,246,0.12);
-    --purple:#8B5CF6;
+    --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
-  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:radial-gradient(circle at 15% 0%, rgba(139,92,246,0.08), transparent 40%),radial-gradient(circle at 85% 10%, rgba(139,92,246,0.06), transparent 35%);}
-  #flairBg{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:0;background-repeat:repeat;background-position:center;transition:opacity .35s ease;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:radial-gradient(circle at 15% 0%, rgba(var(--purple-rgb),0.08), transparent 40%),radial-gradient(circle at 85% 10%, rgba(var(--purple-rgb),0.06), transparent 35%);}
   .wrap{max-width:640px;margin:0 auto;padding:18px 14px 100px;width:100%;}
   h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
   h1{font-size:26px;line-height:1.15;}
   h2{font-size:20px;line-height:1.15;}
-  h3{font-size:11.5px;line-height:1.2;color:var(--pending);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0;}
+  h3{font-size:11.5px;line-height:1.2;color:var(--purple);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0;}
   p{line-height:1.5;color:var(--text-dim);margin:6px 0 0;font-size:14.5px;}
   .scoreboard{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
-  .scoreboard .week{font-family:'Archivo Black',sans-serif;font-size:32px;color:var(--pending);line-height:1;}
+  .scoreboard .week{font-family:'Archivo Black',sans-serif;font-size:32px;color:var(--purple);line-height:1;}
   .scoreboard .week-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;width:100%;}
-  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.08), rgba(139,92,246,0.06)), var(--surface);box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
+  .card.feature{border-color:var(--alive);background:linear-gradient(135deg, rgba(74,222,128,0.08), rgba(var(--purple-rgb),0.06)), var(--surface);box-shadow:0 0 0 1px rgba(74,222,128,0.15) inset;}
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
-  button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:#fff;border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
+  button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:var(--accent-ink);border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
   button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
   button.danger{background:var(--elim);color:#1a0505;}
   button.small{width:auto;padding:10px 12px;font-size:13px;}
@@ -50,12 +49,12 @@
   .bottom-nav{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
   @media (min-width:660px){ .bottom-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:12px 12px 0 0;bottom:0;} }
   .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
-  .bnav-item.active{color:var(--pending);}
+  .bnav-item.active{color:var(--purple);}
   .bnav-item .icon{line-height:1;}
   .bnav-item .icon svg{width:20px;height:20px;display:block;}
   @media (max-width:360px){ .bnav-item{font-size:8.5px;} .bnav-item .icon svg{width:18px;height:18px;} }
   .slot-card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;}
-  .slot-label{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;color:var(--pending);text-transform:uppercase;letter-spacing:0.5px;}
+  .slot-label{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;}
   .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;touch-action:manipulation;}
   .result-item:last-child{border-bottom:none;}
   .kickoff-tag{font-size:11.5px;font-weight:700;}
@@ -90,13 +89,13 @@
   .faq-item{border-bottom:1px solid var(--border);padding:11px 0;}
   .faq-item:last-child{border-bottom:none;}
   .faq-q{font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px;touch-action:manipulation;}
-  .faq-q::after{content:'+';color:var(--pending);font-size:18px;font-weight:400;flex:0 0 auto;}
+  .faq-q::after{content:'+';color:var(--purple);font-size:18px;font-weight:400;flex:0 0 auto;}
   .faq-q.open::after{content:'−';}
   .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
   .faq-a.open{display:block;}
   .history-group{margin-top:14px;}
   .history-group:first-of-type{margin-top:10px;}
-  .history-pos{font-weight:800;font-size:11.5px;color:var(--pending);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
+  .history-pos{font-weight:800;font-size:11.5px;color:var(--purple);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
   .history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
   .history-item:last-child{border-bottom:none;}
   .used-name{font-size:13.5px;color:var(--text);}
@@ -121,25 +120,24 @@
   .flair-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
   @media (max-width:420px){ .flair-grid{grid-template-columns:repeat(3,1fr);} }
   .flair-tile{border:1.5px solid var(--border);border-radius:8px;padding:9px 4px;font-family:'Inter',sans-serif;font-weight:800;font-size:12px;letter-spacing:0.3px;background:var(--surface-2);color:var(--tile-color,var(--text));width:100%;cursor:pointer;touch-action:manipulation;display:flex;align-items:center;justify-content:center;gap:5px;}
-  .flair-tile.selected{border-color:var(--tile-color,var(--pending));box-shadow:0 0 0 1px var(--tile-color,var(--pending)) inset;}
+  .flair-tile.selected{border-color:var(--tile-color,var(--purple));box-shadow:0 0 0 1px var(--tile-color,var(--purple)) inset;}
   .flair-tile img{width:18px;height:18px;border-radius:4px;object-fit:cover;flex:0 0 auto;}
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
   .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
   .hero-banner{position:relative;width:100%;height:20vh;height:clamp(110px,20dvh,480px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;margin-bottom:14px;}
-  .hero-banner::before{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPSc0MCcgaGVpZ2h0PSc0MCc+PGcgdHJhbnNmb3JtPSd0cmFuc2xhdGUoOCw4KScgZmlsbD0nI2ZmZmZmZicgZmlsbC1vcGFjaXR5PScwLjA1Jz48cGF0aCBkPSdNMTIgMEwxNC4yIDkuOEwyNCAxMkwxNC4yIDE0LjJMMTIgMjRMOS44IDE0LjJMMCAxMkw5LjggOS44WicvPjwvZz48L3N2Zz4=");background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
+  .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
   .legend-portrait{float:left;width:156px;max-width:44%;height:auto;border-radius:8px;margin:2px 14px 10px 0;}
   @media (max-width:400px){ .legend-portrait{width:126px;margin:2px 10px 8px 0;} }
-  .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--pending);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--pending);background:var(--pending-dim);border-radius:0 8px 8px 0;}
+  .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--purple);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--purple);background:var(--purple-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding:14px 10px 90px;} }
-  .back-link{background:rgba(139,92,246,0.1);border:1.5px solid var(--pending);color:var(--pending);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0 0 5px;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;animation:hubGlow 2.4s ease-in-out infinite;}
+  .back-link{background:rgba(var(--purple-rgb),0.1);border:1.5px solid var(--purple);color:var(--purple);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0 0 5px;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;animation:hubGlow 2.4s ease-in-out infinite;}
   .back-link:active{transform:translateY(1px);}
-  @keyframes hubGlow{ 0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,0.35);} 50%{box-shadow:0 0 10px 2px rgba(139,92,246,0.55);} }
+  @keyframes hubGlow{ 0%,100%{box-shadow:0 0 0 0 rgba(var(--purple-rgb),0.35);} 50%{box-shadow:0 0 10px 2px rgba(var(--purple-rgb),0.55);} }
 </style>
 </head>
 <body>
-<div id="flairBg" aria-hidden="true"></div>
 <div id="heroBanner"></div>
 <div class="wrap">
   <div id="banner"></div>
@@ -201,57 +199,40 @@ function tabIcon(key){
 
 function teamByCode(code){ return nflTeams.find(t => t.code === code) || null; }
 
-// Builds a small tiled SVG (data URI) of a team's abbreviation, angled and
-// drawn in the team's own primary color at partial opacity -- used as the
-// app-wide background texture when a player hasn't uploaded/has no logo
-// file for their chosen team yet (see applyFlairBackground below). No
-// external assets needed, so this always works even with zero logo files.
-function buildAbbrTileDataURI(code, hex){
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><text x='60' y='68' font-family='Archivo Black, Arial, sans-serif' font-size='24' fill='${hex}' fill-opacity='0.55' text-anchor='middle' transform='rotate(-16 60 60)'>${code}</text></svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
-// Converts a '#rrggbb' hex string to an 'rgba(r, g, b, alpha)' string, for
-// building a translucent color-tint layer from a team's primary_hex.
-function hexToRgba(hex, alpha){
+// Returns a base64-free data URI for the hero banner's repeating sparkle
+// texture, contrast-adapted to the given primary_hex so the same "muted
+// but visible" effect holds across every team instead of washing out on
+// lighter/more saturated primaries. Uses perceived brightness (0-255,
+// standard YIQ-style weighting) to pick white-on-dark vs black-on-light
+// stars, then scales opacity up the closer that color sits to a mid grey
+// (where a fixed-opacity overlay has the least natural contrast) and back
+// down toward the extremes (near-black/near-white, where a light touch is
+// already plenty visible).
+function heroTextureDataURI(hex){
   const h = (hex || '').replace('#', '');
   const r = parseInt(h.substring(0, 2), 16) || 0;
   const g = parseInt(h.substring(2, 4), 16) || 0;
   const b = parseInt(h.substring(4, 6), 16) || 0;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-// Applies (or clears) the muted, app-wide angled-abbreviation background
-// texture for the current player's chosen flair team. No image assets
-// needed. (Used to also have a real-logo tiling branch keyed on
-// `logo_path` -- that column is now `hero_logo_path` and powers the hero
-// banner below instead, so this always uses the abbreviation texture.)
-// Called after profile loads/changes.
-function applyFlairBackground(){
-  const bg = document.getElementById('flairBg');
-  if(!bg) return;
-  const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
-  if(!team){
-    bg.style.opacity = '0';
-    bg.style.backgroundImage = '';
-    return;
-  }
-  bg.style.backgroundImage = `url("${buildAbbrTileDataURI(team.code, team.primary_hex)}")`;
-  bg.style.backgroundSize = '120px 120px';
-  bg.style.backgroundRepeat = 'repeat';
-  bg.style.backgroundPosition = 'center';
-  bg.style.opacity = '0.6';
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000; // 0 (black) - 255 (white)
+  const light = brightness > 150;
+  const distanceFromExtreme = light ? (255 - brightness) : brightness; // 0-~150
+  const opacity = Math.min(0.05 + (distanceFromExtreme / 150) * 0.09, 0.14).toFixed(2);
+  const fill = light ? '#000000' : '#ffffff';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><g transform="translate(8,8)" fill="${fill}" fill-opacity="${opacity}"><path d="M12 0L14.2 9.8L24 12L14.2 14.2L12 24L9.8 14.2L0 12L9.8 9.8Z"/></g></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 // Full-width hero banner: a solid block in the flair team's primary_hex,
-// a secondary_hex bottom accent stripe, and (once uploaded for that team)
-// a right-justified, height-cropped logo graphic pointed at by
-// hero_logo_path. Progressive per-team enhancement -- a team with no
-// hero_logo_path yet renders nothing here at all, same as before this
-// feature existed. Lives in the fixed #heroBanner mount just above .wrap
-// (outside its 640px max-width), so it's full-bleed on desktop as well as
-// mobile. Called after profile loads/changes, alongside
-// applyFlairBackground.
+// a secondary_hex bottom accent stripe, a contrast-adaptive sparkle
+// texture (see heroTextureDataURI), and (once uploaded for that team) a
+// right-justified, height-cropped logo graphic pointed at by
+// hero_logo_path. This is now the ONLY flair display in the app -- the
+// old app-wide tiled-abbreviation background texture was retired in favor
+// of this. Progressive per-team enhancement -- a team with no
+// hero_logo_path yet renders nothing here at all. Lives in the fixed
+// #heroBanner mount just above .wrap (outside its 640px max-width), so
+// it's full-bleed on desktop as well as mobile. Called after profile
+// loads/changes.
 function renderHeroBanner(){
   const el = document.getElementById('heroBanner');
   if(!el) return;
@@ -260,7 +241,44 @@ function renderHeroBanner(){
     el.innerHTML = '';
     return;
   }
-  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};"><img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}"></div>`;
+  const texture = heroTextureDataURI(team.primary_hex);
+  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');"><img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}"></div>`;
+}
+
+// Converts a '#rrggbb' hex string into a bare "r, g, b" triplet, for
+// building CSS custom properties usable inside rgba(var(--x-rgb), alpha).
+function hexToRgbTriplet(hex){
+  const h = (hex || '').replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  return `${r}, ${g}, ${b}`;
+}
+
+// Re-themes the app's accent color (buttons, section headers, the week
+// counter, FAQ toggle, back-link pill/glow, etc.) to the current flair
+// team's secondary_hex, falling back to the original purple when no flair
+// is chosen. Deliberately independent of hero_logo_path/renderHeroBanner
+// -- every team already has a secondary_hex regardless of banner-image
+// rollout, so this works the moment a flair is picked. Does NOT touch
+// --pending/--pending-dim, which stay fixed purple: that pair means
+// "entry awaiting approval" specifically and must stay visually distinct
+// from a team color a player happens to have picked. Sets --accent-ink
+// (the button text color) to dark or light based on the accent's own
+// brightness, since several teams' secondary colors are near-white and
+// white-on-white button text would otherwise be unreadable.
+function applyThemeAccent(){
+  const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
+  const hex = team ? team.secondary_hex : '#8B5CF6';
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) || 0;
+  const g = parseInt(h.substring(2, 4), 16) || 0;
+  const b = parseInt(h.substring(4, 6), 16) || 0;
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  const root = document.documentElement.style;
+  root.setProperty('--purple', hex);
+  root.setProperty('--purple-rgb', hexToRgbTriplet(hex));
+  root.setProperty('--accent-ink', brightness > 150 ? '#0A0B12' : '#ffffff');
 }
 
 // "Playing as <name>" header + its pencil-to-edit and flair-picker
@@ -356,8 +374,8 @@ async function saveFlair(code){
   const { error } = await sb.rpc('update_flair_team', { p_team: code });
   if(error){ showBanner(error.message); return; }
   profile.flair_team = code;
-  applyFlairBackground();
   renderHeroBanner();
+  applyThemeAccent();
   showBanner(code ? 'Flair updated.' : 'Flair cleared.');
   render();
 }
@@ -402,8 +420,8 @@ async function loadNflTeams(){
 async function loadAllData(){
   await loadProfile();
   await Promise.all([loadContests(), loadMyEntries(), loadNflTeams()]);
-  applyFlairBackground();
   renderHeroBanner();
+  applyThemeAccent();
 }
 
 // Contest-level: everything scoped to currentContestId, loaded once a
@@ -485,7 +503,7 @@ async function getWeekTop5(weekNumber){
   return top5;
 }
 function weekTop5ListHTML(top5){
-  return top5.length ? top5.map((t,i) => `<div class="lb-row"><span>#${i+1} ${esc(t.name)}</span><b style="color:var(--pending);">${fmtPts(t.total)} pts</b></div>`).join('')
+  return top5.length ? top5.map((t,i) => `<div class="lb-row"><span>#${i+1} ${esc(t.name)}</span><b style="color:var(--purple);">${fmtPts(t.total)} pts</b></div>`).join('')
     : '<p>No scores yet.</p>';
 }
 // Top 5 individual NFL players (not entrants) for a given week, by that
@@ -509,7 +527,7 @@ async function getWeekTopPlayers(weekNumber){
   return top5;
 }
 function weekTopPlayersListHTML(top5){
-  return top5.length ? top5.map((p,i) => `<div class="lb-row"><span>#${i+1} ${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></span><b style="color:var(--pending);">${fmtPts(p.score)} pts</b></div>`).join('')
+  return top5.length ? top5.map((p,i) => `<div class="lb-row"><span>#${i+1} ${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></span><b style="color:var(--purple);">${fmtPts(p.score)} pts</b></div>`).join('')
     : '<p>No scores yet.</p>';
 }
 // Called once, right after entering (or creating, or re-entering) a
@@ -559,8 +577,8 @@ async function signOut(){
   screen = 'auth'; activeTab = 'hub';
   otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
   clearInterval(otpResendTimer);
-  applyFlairBackground();
   renderHeroBanner();
+  applyThemeAccent();
   render();
 }
 
@@ -1284,7 +1302,7 @@ async function renderStandings(body){
       <div class="lb-row">
         <span>${esc(r.display_name)}</span>
         <span class="row" style="gap:8px;width:auto;">
-          <b style="color:var(--pending);">${fmtPts(r.total)} pts</b>
+          <b style="color:var(--purple);">${fmtPts(r.total)} pts</b>
           <span class="pill ${r.alive ? 'alive' : 'elim'}">${r.alive ? 'ALIVE' : `OUT · WK ${r.eliminated_week}`}</span>
         </span>
       </div>`).join('') || '<p>No approved players yet.</p>';
