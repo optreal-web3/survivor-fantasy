@@ -164,8 +164,13 @@ let nflTeams = []; // reference data: all 32 teams (code/name/division/colors/lo
 
 const app = document.getElementById('app');
 const bannerEl = document.getElementById('banner');
-function showBanner(msg){ bannerEl.innerHTML = `<div class="banner">${esc(msg)}</div>`; }
-function clearBanner(){ bannerEl.innerHTML = ''; }
+let bannerTimeout = null;
+function showBanner(msg){
+  clearTimeout(bannerTimeout);
+  bannerEl.innerHTML = `<div class="banner">${esc(msg)}</div>`;
+  bannerTimeout = setTimeout(clearBanner, 10000);
+}
+function clearBanner(){ clearTimeout(bannerTimeout); bannerTimeout = null; bannerEl.innerHTML = ''; }
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
 
