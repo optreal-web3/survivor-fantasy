@@ -230,27 +230,32 @@ function heroTextureDataURI(hex){
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-// Full-width hero banner: a solid block in the flair team's primary_hex,
-// a secondary_hex bottom accent stripe, a contrast-adaptive sparkle
-// texture (see heroTextureDataURI), and (once uploaded for that team) a
-// right-justified, height-cropped logo graphic pointed at by
-// hero_logo_path. This is now the ONLY flair display in the app -- the
-// old app-wide tiled-abbreviation background texture was retired in favor
-// of this. Progressive per-team enhancement -- a team with no
-// hero_logo_path yet renders nothing here at all. Lives in the fixed
-// #heroBanner mount just above .wrap (outside its 640px max-width), so
-// it's full-bleed on desktop as well as mobile. Called after profile
-// loads/changes.
+// Full-width hero banner: a solid block in the flair team's primary_hex, a
+// secondary_hex bottom accent stripe, and a contrast-adaptive sparkle
+// texture (see heroTextureDataURI) -- this trio renders for ANY picked
+// flair team, logo image or not. A right-justified, height-cropped logo
+// graphic is layered on top only when that team has a hero_logo_path set
+// (progressive enhancement -- optional, not required for the banner to
+// show). Fixed 2026-09-14: an earlier version of this function only
+// rendered anything at all when hero_logo_path was set, so clearing every
+// team's hero_logo_path (removing the real per-team logo images) also
+// blanked the entire banner -- color, stripe, and texture included. That
+// was never the intent (the user wanted only the PNG logos gone, not the
+// color/texture banner), so the logo image is now the only optional part.
+// Lives in the fixed #heroBanner mount just above .wrap (outside its
+// 640px max-width), so it's full-bleed on desktop as well as mobile.
+// Called after profile loads/changes.
 function renderHeroBanner(){
   const el = document.getElementById('heroBanner');
   if(!el) return;
   const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
-  if(!team || !team.hero_logo_path){
+  if(!team){
     el.innerHTML = '';
     return;
   }
   const texture = heroTextureDataURI(team.primary_hex);
-  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');"><img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}"></div>`;
+  const logoImg = team.hero_logo_path ? `<img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}">` : '';
+  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');">${logoImg}</div>`;
 }
 
 // Converts a '#rrggbb' hex string into a bare "r, g, b" triplet, for
