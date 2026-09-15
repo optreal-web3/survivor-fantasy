@@ -79,11 +79,11 @@
   .center{text-align:center;padding:60px 20px;color:var(--text-dim);}
   .stat{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;padding:6px 0;font-size:14px;}
   .stat b{color:var(--text);font-weight:700;}
-  .recap-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13.5px;}
+  .recap-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;}
   .recap-row:last-child{border-bottom:none;}
-  .recap-row .slot-label{flex:0 0 32px;font-size:10.5px;}
+  .recap-row .slot-label{flex:0 0 32px;}
   .recap-row .recap-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
-  .recap-row .recap-score{flex:0 0 auto;font-weight:700;white-space:nowrap;font-size:13px;}
+  .recap-row .recap-score{flex:0 0 auto;font-weight:700;white-space:nowrap;}
   .estimate-note{font-size:11.5px;color:var(--text-dim);font-style:italic;margin:2px 0 0;}
   .tablewrap{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
@@ -107,14 +107,13 @@
   .faq-q.open::after{content:'−';}
   .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
   .faq-a.open{display:block;}
-  .history-group{margin-top:14px;}
-  .history-group:first-of-type{margin-top:10px;}
-  .history-pos{font-weight:800;font-size:11.5px;color:var(--purple);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;}
   .history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
   .history-item:last-child{border-bottom:none;}
   .used-name{font-size:13.5px;color:var(--text);}
   .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
   .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
+  .history-q{align-items:baseline;}
+  .history-count{color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;}
   .app-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:14px;}
   .app-header .brand-icon{width:150px;height:150px;object-fit:contain;display:block;}
   .app-header.hub-header .brand-icon{width:250px;height:250px;}
@@ -1064,6 +1063,12 @@ function renderContestShell(){
   if(activeTab === 'admin') return renderAdmin(body);
 }
 
+// Accordion (same expand/collapse pattern as the FAQ tab and the Prizes
+// tab's "Weekly high score history") -- one row per position, collapsed by
+// default. Added 2026-09-15: this list only grows as the season goes on
+// (WR especially, with 3 slots/week), so an always-expanded list got long
+// fast; collapsing by position keeps the card short while still letting a
+// player open just the position they care about.
 function renderPickHistoryHTML(){
   const positions = ['QB','RB','WR','TE'];
   const grouped = {};
@@ -1075,24 +1080,36 @@ function renderPickHistoryHTML(){
       <h3>Your pick history in this contest</h3>
       <p>Every player you've used in this contest, by position — once someone's on this list, they're locked out for the rest of this contest's season (you can still use them in a different contest). Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
-        <div class="history-group">
-          <div class="history-pos">${pos}</div>
-          ${grouped[pos].length ? grouped[pos].map(p => `
-            <div class="history-item">
-              <span class="used-name">${esc(p.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(p.team)})</span></span>
-              <span class="week-tag">WK ${p.week_number}</span>
-            </div>`).join('') : '<div class="history-empty">None yet</div>'}
+        <div class="faq-item">
+          <div class="faq-q history-q" data-pos="${pos}">${pos}<span class="history-count">(${grouped[pos].length})</span></div>
+          <div class="faq-a" id="history-a-${pos}">
+            ${grouped[pos].length ? grouped[pos].map(p => `
+              <div class="history-item">
+                <span class="used-name">${esc(p.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(p.team)})</span></span>
+                <span class="week-tag">WK ${p.week_number}</span>
+              </div>`).join('') : '<div class="history-empty">None yet</div>'}
+          </div>
         </div>`).join('')}
     </div>`;
 }
+function wirePickHistoryAccordion(){
+  document.querySelectorAll('.history-q').forEach(el => {
+    el.onclick = () => {
+      const ans = document.getElementById(`history-a-${el.dataset.pos}`);
+      const open = ans.classList.toggle('open');
+      el.classList.toggle('open', open);
+    };
+  });
+}
 
 // Contest Home is a status/profile view scoped to the current contest:
-// alive state, a recap of the most recently *played* week (independent of
-// whether a new week has opened), and this contest's pick history. It
-// never depends on currentWeek/closes_at on its own, so it has nothing to
-// "flip" out from under a player -- the recap simply stays until a newer
-// week's picks replace it. Building this week's lineup lives on the Picks
-// tab (see renderPicks below).
+// alive state and a recap of the most recently *played* week (independent
+// of whether a new week has opened). It never depends on currentWeek/
+// closes_at on its own, so it has nothing to "flip" out from under a
+// player -- the recap simply stays until a newer week's picks replace it.
+// Building this week's lineup, and this contest's pick history (moved here
+// 2026-09-15 so players can see who's already used on the same page where
+// they're picking), both live on the Picks tab (see renderPicks below).
 async function renderHome(body){
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
@@ -1213,7 +1230,6 @@ async function renderHome(body){
     ${statusHTML}
     ${recapHTML}
     ${highScoresHTML}
-    ${renderPickHistoryHTML()}
   `;
   wireHighScoresCard(body);
   wireNameEdit(body);
@@ -1307,7 +1323,11 @@ function wireHighScoresCard(body){
 // current contest.
 async function renderPicks(body){
   if(!currentWeek){
-    body.innerHTML = `<div class="card"><h3>No active week</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
+    body.innerHTML = `
+      <div class="card"><h3>No active week</h3><p>There's no open week right now — check back once the next one opens.</p></div>
+      ${renderPickHistoryHTML()}
+    `;
+    wirePickHistoryAccordion();
     return;
   }
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
@@ -1377,6 +1397,7 @@ async function renderPicks(body){
       ${totalScored !== null ? `<div class="stat"><span>Your total this week</span><b style="color:${totalScored >= threshold ? 'var(--alive)' : 'var(--elim)'}">${fmtPts(totalScored)} pts</b></div>` : ''}
       ${totalScored !== null && myPicks.some(p => p.source === 'computed') ? '<p class="estimate-note">Includes auto-filled ("Est.") score(s) not yet reviewed by the commissioner.</p>' : ''}
     </div>
+    ${renderPickHistoryHTML()}
   `;
 
   document.querySelectorAll('.slotSearch').forEach(input => {
@@ -1388,6 +1409,7 @@ async function renderPicks(body){
   });
   wireNameEdit(body);
   wireFlairPicker(body);
+  wirePickHistoryAccordion();
 }
 
 async function runSearch(slot, position, query){
