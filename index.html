@@ -26,6 +26,7 @@
     --alive:#4ADE80; --alive-dim:rgba(74,222,128,0.12);
     --elim:#F76464; --elim-dim:rgba(247,100,100,0.12);
     --pending:#8B5CF6; --pending-dim:rgba(139,92,246,0.12);
+    --caution:#FBBF24; --caution-dim:rgba(251,191,36,0.12);
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
     --bg-grad-end:#242424;
@@ -57,6 +58,7 @@
   .pill.alive{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
   .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
   .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
+  .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
   .bottom-nav{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
   @media (min-width:660px){ .bottom-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:12px 12px 0 0;bottom:0;} }
   .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
@@ -1366,47 +1368,61 @@ function showPickConfirm(slot, id, name, team){
 async function renderStandings(body){
   body.innerHTML = `<div class="center">Loading standings…</div>`;
   await loadFinalizedWeeks();
+  const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
+  if(contestRow) currentContest = contestRow;
+  const threshold = contestRow?.weekly_threshold ?? 100;
   const lastFinalizedWeek = finalizedWeekNumbers.length ? finalizedWeekNumbers[finalizedWeekNumbers.length - 1] : null;
-  // The live in-progress week (if any) takes priority over the last finalized week here --
-  // same "push real-time scores" idea as the Home tab's high-scores card, see displayWeekNumbers().
-  const isLiveTopWeek = liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber);
-  const topScoresWeek = isLiveTopWeek ? liveWeekNumber : lastFinalizedWeek;
+  // The live in-progress week (if any) counts toward the ranking too, same
+  // "push real-time scores" idea as the Home tab's high-scores card -- no
+  // separate "Week N high scores" card here anymore, that lives on Home.
+  const isLive = liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber);
+  const rankWeeks = displayWeekNumbers();
 
-  let topScoresHTML = '', eliminatedHTML = '';
-  if(topScoresWeek){
-    const top5 = await getWeekTop5(topScoresWeek, isLiveTopWeek);
-    const liveTag = isLiveTopWeek ? ' <span class="est-pill" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>' : '';
-    topScoresHTML = `
-      <div class="card">
-        <h3>Week ${topScoresWeek} high scores${liveTag}</h3>
-        ${weekTop5ListHTML(top5)}
-      </div>`;
-  }
+  let eliminatedHTML = '';
   if(lastFinalizedWeek){
     const { data: eliminated } = await sb.from('contest_entries').select('eliminated_week, profiles!inner(display_name)')
       .eq('contest_id', currentContestId).eq('is_approved', true).eq('eliminated_week', lastFinalizedWeek);
     eliminatedHTML = `
       <div class="card">
         <h3>Eliminated week ${lastFinalizedWeek}</h3>
-        ${(eliminated||[]).map(e => `<div class="lb-row"><span>${esc(e.profiles.display_name)}</span><span class="pill elim">OUT</span></div>`).join('') || '<p>No one was eliminated this week.</p>'}
+        ${(eliminated||[]).map(e => `<div class="lb-row"><span>${esc(e.profiles.display_name)}</span><span class="pill elim">ELIMINATED</span></div>`).join('') || '<p>No one was eliminated this week.</p>'}
       </div>`;
   }
 
-  // Cumulative points: sum every scored pick across all finalized weeks in
-  // this contest, per player -- read-only client-side aggregation over
-  // data that's already there, no new columns or tables needed.
+  // Cumulative points: sum every scored pick across all finalized weeks plus
+  // the live in-progress week (if any), per player -- so the ranking moves
+  // in real time as scores sync in, not just after each week is finalized.
+  // liveTotalsMap tracks just the live week's total per player, which is
+  // what decides the Caution/Alive pill below (a weekly threshold check,
+  // not a cumulative one).
   const { data: entriesData } = await sb.from('contest_entries').select('profile_id, alive, eliminated_week, profiles!inner(display_name)')
     .eq('contest_id', currentContestId).eq('is_approved', true);
-  let totalsMap = {};
-  if(finalizedWeekNumbers.length){
-    const { data: allPicks } = await sb.from('picks_with_scores').select('player_id, score')
-      .eq('contest_id', currentContestId).in('week_number', finalizedWeekNumbers);
-    (allPicks || []).forEach(p => { totalsMap[p.player_id] = (totalsMap[p.player_id] || 0) + (Number(p.score) || 0); });
+  let totalsMap = {}, liveTotalsMap = {};
+  if(rankWeeks.length){
+    const { data: allPicks } = await sb.from('picks_with_scores').select('player_id, week_number, score')
+      .eq('contest_id', currentContestId).in('week_number', rankWeeks);
+    (allPicks || []).forEach(p => {
+      totalsMap[p.player_id] = (totalsMap[p.player_id] || 0) + (Number(p.score) || 0);
+      if(isLive && p.week_number === liveWeekNumber){
+        liveTotalsMap[p.player_id] = (liveTotalsMap[p.player_id] || 0) + (Number(p.score) || 0);
+      }
+    });
   }
-  const rows = (entriesData || []).map(r => ({
-    id: r.profile_id, display_name: r.profiles.display_name, alive: r.alive, eliminated_week: r.eliminated_week,
-    total: totalsMap[r.profile_id] || 0
-  })).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name));
+  const rows = (entriesData || []).map(r => {
+    const total = totalsMap[r.profile_id] || 0;
+    let statusClass, statusLabel;
+    if(!r.alive){
+      // Definitive: only ever set by commissioner_finalize_week once a week's scores are locked in.
+      statusClass = 'elim'; statusLabel = `ELIMINATED · WK ${r.eliminated_week}`;
+    } else if(isLive){
+      const liveTotal = liveTotalsMap[r.profile_id] || 0;
+      statusClass = liveTotal >= threshold ? 'alive' : 'caution';
+      statusLabel = liveTotal >= threshold ? 'ALIVE' : 'CAUTION';
+    } else {
+      statusClass = 'alive'; statusLabel = 'ALIVE';
+    }
+    return { id: r.profile_id, display_name: r.profiles.display_name, alive: r.alive, eliminated_week: r.eliminated_week, total, statusClass, statusLabel };
+  }).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name));
 
   function survivorsRowsHTML(list){
     return list.map(r => `
@@ -1414,17 +1430,19 @@ async function renderStandings(body){
         <span>${esc(r.display_name)}</span>
         <span class="row" style="gap:8px;width:auto;">
           <b style="color:var(--purple);">${fmtPts(r.total)} pts</b>
-          <span class="pill ${r.alive ? 'alive' : 'elim'}">${r.alive ? 'ALIVE' : `OUT · WK ${r.eliminated_week}`}</span>
+          <span class="pill ${r.statusClass}">${r.statusLabel}</span>
         </span>
       </div>`).join('') || '<p>No approved players yet.</p>';
   }
 
+  const liveNote = isLive ? `<p class="estimate-note">Live and unofficial — includes week ${liveWeekNumber} scores as they sync in, updated every ~15 minutes. Rankings and Caution/Alive status may shift until the admin finalizes the week.</p>` : '';
+
   body.innerHTML = `
-    ${topScoresHTML}
     ${eliminatedHTML}
     <div class="card">
       <h3>Standings</h3>
-      <p>Ranked by cumulative points across every finalized week in this contest.</p>
+      <p>Ranked by cumulative points across every finalized week${isLive ? ' plus the current live week' : ''} in this contest.</p>
+      ${liveNote}
       <input id="standingsSearch" placeholder="Search players..." style="margin-top:10px;"/>
       <div id="survivorsList" style="margin-top:6px;">${survivorsRowsHTML(rows)}</div>
     </div>`;
