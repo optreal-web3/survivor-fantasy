@@ -17,8 +17,28 @@
 <meta name="twitter:image" content="https://surfan.win/images/degen-king-games-survivor.png">
 <link rel="icon" type="image/png" href="images/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Perf fix (2026-09-15): the Google Fonts stylesheet used to be a plain
+     render-blocking <link rel="stylesheet">, and the Supabase JS bundle used
+     to load via a synchronous <script src> sitting right here in <head>,
+     BEFORE the <style> block below. A synchronous head script blocks HTML
+     parsing entirely until it downloads, so nothing after it (not even the
+     inline <style> tag, let alone <body>) could be parsed or painted until
+     both that script and this font stylesheet had finished loading over the
+     network -- the browser just showed its default white background in the
+     meantime. Fixed two ways: (1) the font stylesheet now loads via the
+     standard non-blocking swap trick below (fetched with media="print" so it
+     doesn't block rendering, then flipped to media="all" once loaded --
+     "display=swap" in the URL means visible text uses the fallback font
+     immediately rather than staying invisible while it waits); (2) the
+     Supabase JS <script> tag was moved out of <head> entirely, down to just
+     above this file's own inline <script> at the end of <body> (see there) --
+     it still has to load before that inline script runs, but by then the
+     browser has already parsed and painted everything above it, including
+     the "Loading…" placeholder, instead of blocking on it in <head>. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <style>
   :root{
     --bg:#0A0B12; --surface:#12131C; --surface-2:#1A1B28;
@@ -152,6 +172,14 @@
   <div id="app"><div class="center">Loading…</div></div>
 </div>
 
+<!-- Perf fix (2026-09-15): moved down here from <head> -- see the comment
+     above the font-loading links for why. This still has to finish loading
+     before the inline app script right below it can run (that script's very
+     first executable line creates the Supabase client), but by this point
+     in the document the browser has already parsed and painted everything
+     above (including the "Loading…" placeholder), so this no longer blocks
+     first paint the way it did sitting in <head>. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 const SUPABASE_URL = 'https://caehjxogikaekpcrxcoo.supabase.co';
 const SUPABASE_KEY = 'sb_publishable__CUibPnjUkkg8LZ6B-ecFA_cY0TJp9P';
@@ -2029,8 +2057,24 @@ async function renderAdmin(body){
 // everything. Without this, switching tabs and coming back (or even just
 // leaving the tab in the background for a while) was kicking players back
 // to the Hub mid-session, no matter what screen or contest they were on.
+//
+// Perf fix (2026-09-15): this listener also used to react to the very
+// first, automatic "INITIAL_SESSION" event that Supabase's client fires
+// once immediately on subscribe, reflecting whatever session was already
+// restored from storage. That's the exact same case the init IIFE below
+// already handles with its own explicit getSession() call -- so on a
+// normal page load with an existing session, both this listener AND the
+// IIFE ended up calling loadAllData() (4 queries) and render() back to
+// back, roughly doubling the network work that has to finish before the
+// real Hub screen replaces the "Loading…" placeholder. The guard below
+// skips that redundant first firing; the IIFE remains the single place
+// that handles first load, including the signed-out ("show the auth
+// screen") case this listener was never responsible for anyway. Every
+// later, real auth change (actual sign-in, sign-out, token refresh) still
+// reaches this listener exactly as before.
 let lastLoadedUserId = null;
 sb.auth.onAuthStateChange(async (event, s) => {
+  if(event === 'INITIAL_SESSION') return;
   if(s){
     const isNewUser = s.user.id !== lastLoadedUserId;
     session = s;
