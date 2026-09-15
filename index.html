@@ -515,19 +515,31 @@ async function loadRecentWeek(){
   recentWeekRow = cwRow;
   recentWeekClosesAt = wkRow ? wkRow.closes_at : null;
 }
+// Which week (if any) is "live" -- open (not yet finalized) but already has at least one pick
+// in it, i.e. currently being played out / scored. Used by the Home "Weekly high scores" card
+// and Standings so they can show real-time/estimated numbers during the weekend instead of
+// waiting for the admin to finalize the week.
+// Perf note (2026-09-15): this used to find liveWeekNumber by looping over every open
+// (not-yet-finalized) week, newest-first, and awaiting one COUNT query per week until it found
+// one with picks in it. For a contest with several weeks scheduled out (normal once a season's
+// underway), that's a chain of sequential round trips to the DB before the loop ever reaches
+// the actual live week -- the biggest single contributor to the "Standings/Prizes/entering a
+// contest feels slow" delays. Replaced with one query that pulls week_number for every pick in
+// any open week at once, then picks the newest week_number that shows up -- same result, one
+// round trip no matter how many open weeks exist.
 async function loadFinalizedWeeks(){
   const [{ data: finalizedRows }, { data: openRows }] = await Promise.all([
     sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', true).order('week_number'),
     sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', false).order('week_number', { ascending: false })
   ]);
   finalizedWeekNumbers = (finalizedRows || []).map(w => w.week_number);
-  // liveWeekNumber: the highest not-yet-finalized week that already has at least one pick in
-  // it -- checked newest-first so an open pick week with no picks yet (nothing to show) doesn't
-  // shadow a previous week that's still being scored. Usually at most 1-2 candidates to check.
+  const openWeekNumbers = (openRows || []).map(w => w.week_number); // already newest-first
   liveWeekNumber = null;
-  for(const row of openRows || []){
-    const { count } = await sb.from('picks').select('*', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('week_number', row.week_number);
-    if(count){ liveWeekNumber = row.week_number; break; }
+  if(openWeekNumbers.length){
+    const { data: picksInOpenWeeks } = await sb.from('picks').select('week_number')
+      .eq('contest_id', currentContestId).in('week_number', openWeekNumbers);
+    const weeksWithPicks = new Set((picksInOpenWeeks || []).map(p => p.week_number));
+    liveWeekNumber = openWeekNumbers.find(w => weeksWithPicks.has(w)) ?? null;
   }
   // Default the slider to the most recent displayable week (the live one if there is one,
   // otherwise the most recent finalized week); keep the current position if it's still valid
@@ -605,11 +617,13 @@ function weekTopPlayersListHTML(top5){
 }
 // Called once, right after entering (or creating, or re-entering) a
 // contest from the Hub -- loads everything renderHome/renderPicks/etc need.
+// Perf note (2026-09-15): loadCurrentContest/refreshCurrentEntry/loadCurrentWeek each only
+// depend on currentContestId/session (already set by the time this runs), not on each other's
+// results -- they used to run one after another for no reason, adding three sequential round
+// trips before the second batch could even start. Running them together cuts that to one.
 async function loadContestData(){
   adminScoreWeek = null; // re-derive fresh (defaulting to the oldest unfinalized week) each time a contest is (re-)entered
-  await loadCurrentContest();
-  await refreshCurrentEntry();
-  await loadCurrentWeek();
+  await Promise.all([loadCurrentContest(), refreshCurrentEntry(), loadCurrentWeek()]);
   await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadRecentWeek(), loadFinalizedWeeks()]);
 }
 
@@ -1367,8 +1381,10 @@ function showPickConfirm(slot, id, name, team){
 
 async function renderStandings(body){
   body.innerHTML = `<div class="center">Loading standings…</div>`;
-  await loadFinalizedWeeks();
-  const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
+  const [ , { data: contestRow } ] = await Promise.all([
+    loadFinalizedWeeks(),
+    sb.from('contests').select('*').eq('id', currentContestId).maybeSingle()
+  ]);
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
   const lastFinalizedWeek = finalizedWeekNumbers.length ? finalizedWeekNumbers[finalizedWeekNumbers.length - 1] : null;
@@ -1378,10 +1394,24 @@ async function renderStandings(body){
   const isLive = liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber);
   const rankWeeks = displayWeekNumbers();
 
+  // Perf note (2026-09-15): eliminatedHTML's query, entriesData, and allPicks used to each be
+  // awaited one after another even though none of them depend on each other or on the contest
+  // row fetched above -- fired together instead, same idea as loadContestData's fix.
+  const [{ data: eliminated }, { data: entriesData }, { data: allPicks }] = await Promise.all([
+    lastFinalizedWeek
+      ? sb.from('contest_entries').select('eliminated_week, profiles!inner(display_name)')
+          .eq('contest_id', currentContestId).eq('is_approved', true).eq('eliminated_week', lastFinalizedWeek)
+      : Promise.resolve({ data: null }),
+    sb.from('contest_entries').select('profile_id, alive, eliminated_week, profiles!inner(display_name)')
+      .eq('contest_id', currentContestId).eq('is_approved', true),
+    rankWeeks.length
+      ? sb.from('picks_with_scores').select('player_id, week_number, score')
+          .eq('contest_id', currentContestId).in('week_number', rankWeeks)
+      : Promise.resolve({ data: null })
+  ]);
+
   let eliminatedHTML = '';
   if(lastFinalizedWeek){
-    const { data: eliminated } = await sb.from('contest_entries').select('eliminated_week, profiles!inner(display_name)')
-      .eq('contest_id', currentContestId).eq('is_approved', true).eq('eliminated_week', lastFinalizedWeek);
     eliminatedHTML = `
       <div class="card">
         <h3>Eliminated week ${lastFinalizedWeek}</h3>
@@ -1395,19 +1425,13 @@ async function renderStandings(body){
   // liveTotalsMap tracks just the live week's total per player, which is
   // what decides the Caution/Alive pill below (a weekly threshold check,
   // not a cumulative one).
-  const { data: entriesData } = await sb.from('contest_entries').select('profile_id, alive, eliminated_week, profiles!inner(display_name)')
-    .eq('contest_id', currentContestId).eq('is_approved', true);
   let totalsMap = {}, liveTotalsMap = {};
-  if(rankWeeks.length){
-    const { data: allPicks } = await sb.from('picks_with_scores').select('player_id, week_number, score')
-      .eq('contest_id', currentContestId).in('week_number', rankWeeks);
-    (allPicks || []).forEach(p => {
-      totalsMap[p.player_id] = (totalsMap[p.player_id] || 0) + (Number(p.score) || 0);
-      if(isLive && p.week_number === liveWeekNumber){
-        liveTotalsMap[p.player_id] = (liveTotalsMap[p.player_id] || 0) + (Number(p.score) || 0);
-      }
-    });
-  }
+  (allPicks || []).forEach(p => {
+    totalsMap[p.player_id] = (totalsMap[p.player_id] || 0) + (Number(p.score) || 0);
+    if(isLive && p.week_number === liveWeekNumber){
+      liveTotalsMap[p.player_id] = (liveTotalsMap[p.player_id] || 0) + (Number(p.score) || 0);
+    }
+  });
   const rows = (entriesData || []).map(r => {
     const total = totalsMap[r.profile_id] || 0;
     let statusClass, statusLabel;
@@ -1456,12 +1480,14 @@ async function renderStandings(body){
 
 async function renderPrizes(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  await loadFinalizedWeeks();
-  const [{ data: contestRow }, { count }, { count: aliveCount }, { count: secondChanceCount }] = await Promise.all([
-    sb.from('contests').select('*').eq('id', currentContestId).single(),
-    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true),
-    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true).eq('alive', true),
-    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('second_chance_used', true)
+  const [ , [{ data: contestRow }, { count }, { count: aliveCount }, { count: secondChanceCount }] ] = await Promise.all([
+    loadFinalizedWeeks(),
+    Promise.all([
+      sb.from('contests').select('*').eq('id', currentContestId).single(),
+      sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true),
+      sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true).eq('alive', true),
+      sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('second_chance_used', true)
+    ])
   ]);
   currentContest = contestRow;
   const fee = contestRow.entry_fee || 0;
