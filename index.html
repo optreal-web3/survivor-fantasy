@@ -89,9 +89,9 @@
   th{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;}
   .scores-grid{display:grid;grid-template-columns:1fr;gap:10px;}
   @media (min-width:640px){ .scores-grid{grid-template-columns:1fr 1fr;} }
-  .player-score-card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface-2);}
-  .player-score-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
-  .player-score-name{font-weight:700;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .player-score-card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface-2);min-width:0;overflow:hidden;}
+  .player-score-head{display:flex;justify-content:space-between;align-items:center;gap:8px;min-width:0;}
+  .player-score-name{font-weight:700;font-size:14px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
   .player-score-tag{font-size:12px;font-weight:600;color:var(--text-dim);}
   .player-score-pickers{font-size:11.5px;color:var(--text-dim);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);line-height:1.4;}
   .scoreInput{width:64px;flex:0 0 auto;margin:0;padding:6px 8px;font-size:13px;text-align:right;}
@@ -167,9 +167,20 @@ let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPla
 let recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
 let weekGamesMap = {};
 let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in the CURRENT contest
-let hsWeekIndex = -1; // index into finalizedWeekNumbers currently shown on the Contest Home high-scores slider
-const weekTop5Cache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,total}] array, memoized for the session
-const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,position,team,score}] NFL-player array, memoized
+// The most recent NOT-yet-finalized week (contest-wide, not player-specific) that already has
+// at least one pick in it -- i.e. the week currently being played out / scored live, if any.
+// null when there's no such week (e.g. the open week hasn't kicked off yet, or every reached
+// week is already finalized). Set by loadFinalizedWeeks(). Lets the Home "Weekly high scores"
+// card and the Standings "high scores" card show real-time/estimated scores during the
+// weekend instead of waiting until the admin finalizes the week.
+let liveWeekNumber = null;
+let hsWeekIndex = -1; // index into displayWeekNumbers() currently shown on the Contest Home high-scores slider
+const weekTop5Cache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,total}] array, memoized (finalized weeks only -- see getWeekTop5)
+const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,position,team,score,pickers}] NFL-player array, memoized (finalized weeks only)
+// Which week's score-entry grid is currently shown on the Admin tab -- persists across
+// re-renders so it doesn't jump around while editing. Reset to null (re-derived fresh) whenever
+// a contest is (re-)entered or a week gets finalized -- see loadContestData() and renderAdmin().
+let adminScoreWeek = null;
 let screen = 'loading', activeTab = 'hub';
 let otpSent = false, pendingEmail = null, pendingName = null, otpCooldownUntil = 0;
 let otpResendTimer = null; // interval id for the "Resend code" countdown on the code-entry screen
@@ -503,19 +514,42 @@ async function loadRecentWeek(){
   recentWeekClosesAt = wkRow ? wkRow.closes_at : null;
 }
 async function loadFinalizedWeeks(){
-  const { data } = await sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', true).order('week_number');
-  finalizedWeekNumbers = (data || []).map(w => w.week_number);
-  // Default the slider to the most recent finalized week; keep the current
-  // position if it's still valid (e.g. after a re-render).
-  if(hsWeekIndex < 0 || hsWeekIndex >= finalizedWeekNumbers.length) hsWeekIndex = finalizedWeekNumbers.length - 1;
+  const [{ data: finalizedRows }, { data: openRows }] = await Promise.all([
+    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', true).order('week_number'),
+    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', false).order('week_number', { ascending: false })
+  ]);
+  finalizedWeekNumbers = (finalizedRows || []).map(w => w.week_number);
+  // liveWeekNumber: the highest not-yet-finalized week that already has at least one pick in
+  // it -- checked newest-first so an open pick week with no picks yet (nothing to show) doesn't
+  // shadow a previous week that's still being scored. Usually at most 1-2 candidates to check.
+  liveWeekNumber = null;
+  for(const row of openRows || []){
+    const { count } = await sb.from('picks').select('*', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('week_number', row.week_number);
+    if(count){ liveWeekNumber = row.week_number; break; }
+  }
+  // Default the slider to the most recent displayable week (the live one if there is one,
+  // otherwise the most recent finalized week); keep the current position if it's still valid
+  // (e.g. after a re-render).
+  if(hsWeekIndex < 0 || hsWeekIndex >= displayWeekNumbers().length) hsWeekIndex = displayWeekNumbers().length - 1;
+}
+// finalizedWeekNumbers plus the live in-progress week (if any and not already finalized) --
+// used only by the Home/Standings "high scores" displays, which are fine showing an
+// estimate. Cumulative Standings totals and eliminations stay on finalizedWeekNumbers alone.
+function displayWeekNumbers(){
+  return (liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber))
+    ? finalizedWeekNumbers.concat([liveWeekNumber])
+    : finalizedWeekNumbers;
 }
 // Shared by the Contest Home slider, Standings' "latest week" card, and the
 // Prizes weekly-history accordion -- one place that turns a week's picks
 // into a top-5 [{name,total}] list, memoized per contest+week since
 // finalized weeks never change once scored.
-async function getWeekTop5(weekNumber){
+// bypassCache: pass true for a week that's still live (scores change every ~15 min as
+// sync-player-stats runs) so a stale memoized value doesn't stick around across re-renders.
+// Finalized weeks never change once scored, so they're safe to cache indefinitely.
+async function getWeekTop5(weekNumber, bypassCache){
   const cacheKey = `${currentContestId}:${weekNumber}`;
-  if(weekTop5Cache[cacheKey]) return weekTop5Cache[cacheKey];
+  if(!bypassCache && weekTop5Cache[cacheKey]) return weekTop5Cache[cacheKey];
   const { data } = await sb.from('picks_with_scores').select('player_id, score, profiles(display_name)')
     .eq('contest_id', currentContestId).eq('week_number', weekNumber);
   const totals = {};
@@ -524,7 +558,7 @@ async function getWeekTop5(weekNumber){
     totals[p.player_id].total += Number(p.score) || 0;
   });
   const top5 = Object.values(totals).sort((a,b) => b.total - a.total).slice(0, 5);
-  weekTop5Cache[cacheKey] = top5;
+  if(!bypassCache) weekTop5Cache[cacheKey] = top5;
   return top5;
 }
 function weekTop5ListHTML(top5){
@@ -532,32 +566,45 @@ function weekTop5ListHTML(top5){
     : '<p>No scores yet.</p>';
 }
 // Top 5 individual NFL players (not entrants) for a given week, by that
-// player's own score. A real player's weekly score is one fact stored once
-// in week_player_scores (global, shared across every contest), so
-// `picks_with_scores` already carries the right value for every entrant in
-// THIS contest who drafted him -- this just dedupes by nfl_player_id and
-// takes the top 5. Memoized per contest+week same as getWeekTop5.
-async function getWeekTopPlayers(weekNumber){
+// player's own score, plus which of this contest's entrants picked them (a
+// real NFL player is very often drafted by more than one entrant in the
+// same week) -- this is the "Chosen Stars of the Week" card. A real
+// player's weekly score is one fact stored once in week_player_scores
+// (global, shared across every contest), so `picks_with_scores` already
+// carries the right value for every entrant in THIS contest who drafted
+// him -- this dedupes by nfl_player_id, collects every picker's display
+// name, and takes the top 5 by score. Memoized per contest+week same as
+// getWeekTop5 (bypassCache for the live in-progress week -- see there).
+async function getWeekTopPlayers(weekNumber, bypassCache){
   const cacheKey = `${currentContestId}:${weekNumber}`;
-  if(weekTopPlayersCache[cacheKey]) return weekTopPlayersCache[cacheKey];
-  const { data } = await sb.from('picks_with_scores').select('nfl_player_id, nfl_player_name, position, team, score')
+  if(!bypassCache && weekTopPlayersCache[cacheKey]) return weekTopPlayersCache[cacheKey];
+  const { data } = await sb.from('picks_with_scores').select('nfl_player_id, nfl_player_name, position, team, score, profiles(display_name)')
     .eq('contest_id', currentContestId).eq('week_number', weekNumber);
   const byPlayer = {};
   (data || []).forEach(p => {
-    if(p.score === null || byPlayer[p.nfl_player_id]) return;
-    byPlayer[p.nfl_player_id] = { name: p.nfl_player_name, position: p.position, team: p.team, score: Number(p.score) || 0 };
+    if(p.score === null) return;
+    if(!byPlayer[p.nfl_player_id]) byPlayer[p.nfl_player_id] = { name: p.nfl_player_name, position: p.position, team: p.team, score: Number(p.score) || 0, pickers: [] };
+    byPlayer[p.nfl_player_id].pickers.push(p.profiles?.display_name || '');
   });
   const top5 = Object.values(byPlayer).sort((a,b) => b.score - a.score).slice(0, 5);
-  weekTopPlayersCache[cacheKey] = top5;
+  if(!bypassCache) weekTopPlayersCache[cacheKey] = top5;
   return top5;
 }
 function weekTopPlayersListHTML(top5){
-  return top5.length ? top5.map((p,i) => `<div class="lb-row"><span>#${i+1} ${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></span><b style="color:var(--purple);">${fmtPts(p.score)} pts</b></div>`).join('')
+  return top5.length ? top5.map((p,i) => `
+    <div class="lb-row" style="align-items:flex-start;">
+      <span>
+        <div>#${i+1} ${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></div>
+        <div class="player-score-pickers" style="margin-top:3px;padding-top:0;border-top:none;">Picked by: ${p.pickers.length ? p.pickers.map(esc).join(', ') : '—'}</div>
+      </span>
+      <b style="color:var(--purple);white-space:nowrap;">${fmtPts(p.score)} pts</b>
+    </div>`).join('')
     : '<p>No scores yet.</p>';
 }
 // Called once, right after entering (or creating, or re-entering) a
 // contest from the Hub -- loads everything renderHome/renderPicks/etc need.
 async function loadContestData(){
+  adminScoreWeek = null; // re-derive fresh (defaulting to the oldest unfinalized week) each time a contest is (re-)entered
   await loadCurrentContest();
   await refreshCurrentEntry();
   await loadCurrentWeek();
@@ -1140,27 +1187,35 @@ async function renderHome(body){
 }
 
 // Weekly high-scores card, used on Contest Home with prev/next arrows
-// through every finalized week in this contest. Scores live permanently
-// on the finalized `picks` rows (nothing ever deletes them), so this is
-// just a read + client-side sum -- no separate storage needed.
+// through every finalized week in this contest, PLUS (2026-09-15) the
+// live in-progress week if there is one -- scores update as
+// sync-player-stats runs every 15 minutes, tagged "Live" until the admin
+// finalizes that week. Scores live permanently on the finalized `picks`
+// rows (nothing ever deletes them), so this is just a read + client-side
+// sum -- no separate storage needed.
 async function renderHighScoresCardHTML(){
-  if(!finalizedWeekNumbers.length){
-    return `<div class="card"><h3>Weekly high scores</h3><p>Nothing finalized yet — once the admin finalizes a week, that week's top 5 scores will show up here.</p></div>`;
+  const weeks = displayWeekNumbers();
+  if(!weeks.length){
+    return `<div class="card"><h3>Weekly high scores</h3><p>Nothing to show yet — once this week's games get underway (or the admin finalizes a week), scores will show up here.</p></div>`;
   }
-  const wk = finalizedWeekNumbers[hsWeekIndex];
-  const [top5, topPlayers] = await Promise.all([getWeekTop5(wk), getWeekTopPlayers(wk)]);
+  if(hsWeekIndex < 0 || hsWeekIndex >= weeks.length) hsWeekIndex = weeks.length - 1;
+  const wk = weeks[hsWeekIndex];
+  const isLive = wk === liveWeekNumber && !finalizedWeekNumbers.includes(wk);
+  const [top5, topPlayers] = await Promise.all([getWeekTop5(wk, isLive), getWeekTopPlayers(wk, isLive)]);
+  const liveTag = isLive ? ' <span class="est-pill" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>' : '';
   return `
     <div class="card">
       <div class="row">
-        <h3>Week ${wk} high scores</h3>
+        <h3>Week ${wk} high scores${liveTag}</h3>
         <span class="row" style="gap:6px;width:auto;">
           <button class="small secondary" id="hsPrev" ${hsWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
-          <button class="small secondary" id="hsNext" ${hsWeekIndex >= finalizedWeekNumbers.length - 1 ? 'disabled' : ''}>›</button>
+          <button class="small secondary" id="hsNext" ${hsWeekIndex >= weeks.length - 1 ? 'disabled' : ''}>›</button>
         </span>
       </div>
       <div style="margin-top:8px;">${weekTop5ListHTML(top5)}</div>
       <div class="divider"></div>
-      <h3>Top NFL performers</h3>
+      <h3>Chosen Stars of the Week</h3>
+      <p style="margin-top:2px;">Top 5 individual NFL scores among everyone's picks this week.</p>
       <div style="margin-top:8px;">${weekTopPlayersListHTML(topPlayers)}</div>
     </div>`;
 }
@@ -1312,16 +1367,22 @@ async function renderStandings(body){
   body.innerHTML = `<div class="center">Loading standings…</div>`;
   await loadFinalizedWeeks();
   const lastFinalizedWeek = finalizedWeekNumbers.length ? finalizedWeekNumbers[finalizedWeekNumbers.length - 1] : null;
+  // The live in-progress week (if any) takes priority over the last finalized week here --
+  // same "push real-time scores" idea as the Home tab's high-scores card, see displayWeekNumbers().
+  const isLiveTopWeek = liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber);
+  const topScoresWeek = isLiveTopWeek ? liveWeekNumber : lastFinalizedWeek;
 
   let topScoresHTML = '', eliminatedHTML = '';
-  if(lastFinalizedWeek){
-    const top5 = await getWeekTop5(lastFinalizedWeek);
+  if(topScoresWeek){
+    const top5 = await getWeekTop5(topScoresWeek, isLiveTopWeek);
+    const liveTag = isLiveTopWeek ? ' <span class="est-pill" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>' : '';
     topScoresHTML = `
       <div class="card">
-        <h3>Week ${lastFinalizedWeek} high scores</h3>
+        <h3>Week ${topScoresWeek} high scores${liveTag}</h3>
         ${weekTop5ListHTML(top5)}
       </div>`;
-
+  }
+  if(lastFinalizedWeek){
     const { data: eliminated } = await sb.from('contest_entries').select('eliminated_week, profiles!inner(display_name)')
       .eq('contest_id', currentContestId).eq('is_approved', true).eq('eliminated_week', lastFinalizedWeek);
     eliminatedHTML = `
@@ -1515,9 +1576,10 @@ function renderLegend(body){
 
 async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: contestRow }, { data: entryRows }] = await Promise.all([
+  const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }] = await Promise.all([
     sb.from('contests').select('*').eq('id', currentContestId).single(),
-    sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId)
+    sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId),
+    sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number')
   ]);
   currentContest = contestRow;
   const players = (entryRows || []).map(p => ({
@@ -1525,8 +1587,22 @@ async function renderAdmin(body){
     alive: p.alive, eliminated_week: p.eliminated_week, second_chance_used: p.second_chance_used, is_commissioner: p.is_commissioner
   })).sort((a,b) => a.display_name.localeCompare(b.display_name));
 
-  const weekForScores = currentWeek ? currentWeek.week_number : 1;
-  const isFinalized = currentWeek ? !!currentWeek.is_finalized : false;
+  // Which week's score-entry grid to show. Fixed 2026-09-15: this used to always be just
+  // currentWeek (the open pick week) -- the instant the week rolled over (the moment the
+  // previous week's closes_at passed, regardless of whether it had been finalized yet), the
+  // previous week's players/scores disappeared from Admin entirely with no way to get back to
+  // them. Now every week this contest has actually reached (<= currentWeek, so no empty future
+  // weeks) is selectable via the pill row below, defaulting to the oldest still-unfinalized one
+  // (the one that actually needs attention) -- once it's finalized it rolls off that default and
+  // the next open week takes its place, per the reset of adminScoreWeek in the finalize handler
+  // below. Already-finalized weeks stay reachable too, for fixing a mistake after the fact.
+  const reachedWeeks = (contestWeekRows || []).filter(w => !currentWeek || w.week_number <= currentWeek.week_number);
+  if(adminScoreWeek === null || !reachedWeeks.some(w => w.week_number === adminScoreWeek)){
+    const firstOpen = reachedWeeks.find(w => !w.is_finalized);
+    adminScoreWeek = firstOpen ? firstOpen.week_number : (reachedWeeks.length ? reachedWeeks[reachedWeeks.length - 1].week_number : (currentWeek ? currentWeek.week_number : 1));
+  }
+  const weekForScores = adminScoreWeek;
+  const isFinalized = reachedWeeks.find(w => w.week_number === weekForScores)?.is_finalized ?? false;
 
   let scoresTableHTML;
   let computedCount = 0;
@@ -1636,17 +1712,26 @@ async function renderAdmin(body){
     </div>
 
     <div class="card">
+      ${reachedWeeks.length > 1 ? `
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+          ${reachedWeeks.map(w => `<button type="button" class="small ${w.week_number === weekForScores ? '' : 'secondary'}" data-admin-week="${w.week_number}" style="width:auto;">Wk ${w.week_number}${w.is_finalized ? ' ✓' : ''}</button>`).join('')}
+        </div>` : ''}
       <div class="row">
         <h3>Week ${weekForScores} scores</h3>
         ${!isFinalized ? '<button class="small secondary" id="refreshScoresBtn" style="width:auto;">Refresh scores now</button>' : ''}
       </div>
       ${!isFinalized && computedCount ? `<p>${computedCount} score${computedCount === 1 ? '' : 's'} below ${computedCount === 1 ? 'is' : 'are'} auto-filled from live NFL stats (tagged "Est.") and haven't been reviewed yet — double-check before finalizing.</p>` : ''}
+      ${!isFinalized ? '<p class="estimate-note">A score still blank a while after that player\'s game has ended usually means we couldn\'t automatically match them — enter it manually below. (Someone who played but recorded nothing gets auto-filled as 0, not left blank.)</p>' : ''}
       ${scoresTableHTML}
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
       <div id="finalizeConfirm"></div>
     </div>
   `;
+
+  document.querySelectorAll('[data-admin-week]').forEach(btn => {
+    btn.onclick = () => { adminScoreWeek = Number(btn.dataset.adminWeek); renderAdmin(body); };
+  });
 
   document.querySelectorAll('[data-secondchance]').forEach(btn => {
     btn.onclick = guard(async () => {
