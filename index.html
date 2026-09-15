@@ -1168,7 +1168,6 @@ async function renderHome(body){
           <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)'}">${fmtPts(currentTotal)} pts</b></div>
           ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — not final until the week is finalized.</p>` : ''}
           ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
-        ` : ''}
         <div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
       </div>`;
   }
