@@ -1109,7 +1109,36 @@ async function renderHome(body){
         ${canJoin ? '<button id="joinFromHomeBtn" style="margin-top:10px;">Join this contest</button>' : ''}
       </div>`;
   } else if(!currentEntry.alive){
-    statusHTML = `<div class="card"><h3>You're out</h3><p>Eliminated in week ${currentEntry.eliminated_week}. Thanks for playing — check the standings tab for where things landed.</p></div>`;
+    // Second-chance rebuy (added 2026-09-15): a player who's eliminated can
+    // self-serve request a rebuy for one week after their own elimination
+    // (eliminated_week + 1), as long as that's still within
+    // contests.second_chance_min_week -- see request_second_chance() for
+    // the exact server-side rule this mirrors. The request just flags it
+    // for the commissioner to confirm (Admin tab) once they've verified
+    // re-payment -- it doesn't reinstate the player on its own.
+    const scMinWeek = contestRow?.second_chance_min_week ?? 5;
+    const scDeadlineWeek = currentEntry.eliminated_week + 1;
+    const scWindowOpen = !!currentWeek && currentEntry.eliminated_week <= scMinWeek && currentWeek.week_number <= scDeadlineWeek;
+    if(currentEntry.second_chance_requested_at){
+      statusHTML = `
+        <div class="card">
+          <h3>You're out</h3>
+          <p>Eliminated in week ${currentEntry.eliminated_week}.</p>
+          <p>Second-chance rebuy requested — waiting on the admin to confirm your payment.</p>
+          <button class="small secondary" id="cancelScBtn" style="margin-top:10px;">Cancel request</button>
+        </div>`;
+    } else if(!currentEntry.second_chance_used && scWindowOpen){
+      statusHTML = `
+        <div class="card">
+          <h3>You're out</h3>
+          <p>Eliminated in week ${currentEntry.eliminated_week}.</p>
+          <button id="useSecondChanceBtn" style="margin-top:10px;">Use second-chance rebuy</button>
+          <p class="estimate-note">Available through week ${scDeadlineWeek} only — same entry fee, added to the prize pool.</p>
+          <div id="scConfirmArea"></div>
+        </div>`;
+    } else {
+      statusHTML = `<div class="card"><h3>You're out</h3><p>Eliminated in week ${currentEntry.eliminated_week}. Thanks for playing — check the standings tab for where things landed.</p></div>`;
+    }
   } else if(!currentEntry.is_approved){
     statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with this contest's admin.</p></div>`;
   } else if(currentWeek){
@@ -1196,6 +1225,40 @@ async function renderHome(body){
       if(error){ showBanner(error.message); return; }
       await loadMyEntries();
       await loadContestData();
+      render();
+    });
+  }
+  // Second-chance rebuy: request (with an inline confirm step, since it
+  // implies committing to pay the entry fee again) or cancel a pending one.
+  const useScBtn = document.getElementById('useSecondChanceBtn');
+  if(useScBtn){
+    useScBtn.onclick = () => {
+      const area = document.getElementById('scConfirmArea');
+      area.innerHTML = `
+        <div class="confirm-box">
+          <p style="color:var(--text);">This lets the admin know you want to buy back in for the same entry fee — they'll confirm once you've paid. Continue?</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="scCancelConfirm" style="flex:1;">Cancel</button>
+            <button class="small" id="scConfirmRequest" style="flex:1;">Request rebuy</button>
+          </div>
+        </div>`;
+      document.getElementById('scCancelConfirm').onclick = () => { area.innerHTML = ''; };
+      document.getElementById('scConfirmRequest').onclick = guard(async () => {
+        const { error } = await sb.rpc('request_second_chance', { p_contest_id: currentContestId });
+        if(error){ showBanner(error.message); return; }
+        showBanner('Second-chance rebuy requested — the admin will confirm once you\'ve paid.');
+        await refreshCurrentEntry();
+        render();
+      });
+    };
+  }
+  const cancelScBtn = document.getElementById('cancelScBtn');
+  if(cancelScBtn){
+    cancelScBtn.onclick = guard(async () => {
+      const { error } = await sb.rpc('cancel_second_chance_request', { p_contest_id: currentContestId });
+      if(error){ showBanner(error.message); return; }
+      showBanner('Request canceled.');
+      await refreshCurrentEntry();
       render();
     });
   }
@@ -1547,7 +1610,7 @@ async function renderPrizes(body){
 function faqItems(contest){
   const thresholdLine = contest ? `${contest.weekly_threshold}+ points` : "each contest's own posted threshold";
   const weeklyPrizeEnd = contest ? (contest.weekly_prize_end_week || 10) : 10;
-  return [    
+  return [
     { q: "Do I need to enter a new code every time I come back to this app?",
       a: "No — once you enter a code, this device stays signed in. You'll only need to sign in again if you switch devices or browsers, sign out, or clear your browser's data." },
     { q: "Is my email visible to other players?",
@@ -1577,7 +1640,7 @@ function faqItems(contest){
     { q: "How are weekly prizes decided?",
       a: `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes run for the first ${weeklyPrizeEnd} weeks of the contest, with the pool split evenly across those weeks.` },
     { q: "I got eliminated — is there any way back in?",
-      a: "That depends on the specific contest you're playing — second-chance rules (if any) vary from contest to contest. Check with that contest's own admin to see what's available to you there." },
+      a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. If you don't see that button, check with that contest's own admin." },
     { q: "Where can I see past weeks' high scores?",
       a: "A contest's Home tab has a weekly high-scores card with ‹ › arrows to flip through every finalized week. For the full season-long list in one place, check the \"Weekly high score history\" section on that contest's Prizes tab — tap a week to expand its top 5." },
     { q: "How are the Standings ranked?",
@@ -1615,7 +1678,7 @@ function renderLegend(body){
       <p>At the heart of DKG sits the royal NFT Knights Collection — a limited set of digital relics that grant true virtual membership. Holding one of these NFTs is more than ownership; it is citizenship. Members gain exclusive access to the community's inner halls: private game modes, enhanced rewards, and unique utility that evolves with the ecosystem and DKG. Some NFTs unlock advantages in competitions, others grant cosmetic flexes or potential revenue-sharing privileges. In short, they turn holders from spectators into nobles of the realm.</p>
       <p>The flagship creation of Degen King Games is the Survivor Fantasy Challenge — a sharp, addictive twist on classic fantasy football. Instead of managing a full season roster week after week, players navigate a high-stakes elimination-style gauntlet. Each round brings brutal choices and unexpected upsets. Only the shrewdest, luckiest, and most resilient "survivors" claim the ultimate crown and the spoils that come with it.</p>
       <p>Degen King Games is not just another studio. It is a living experiment in community-owned entertainment — where the people who believed first become the architects, the NFT holders become the aristocracy, and every shipped game-build is another chapter in the ongoing saga of the DGEN DAO kingdom.</p>
-      <p>Welcome to the realm.</p> 
+      <p>Welcome to the realm.</p>
       <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real.</div>
     </div>`;
 }
@@ -1624,13 +1687,14 @@ async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
   const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }] = await Promise.all([
     sb.from('contests').select('*').eq('id', currentContestId).single(),
-    sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId),
+    sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, second_chance_requested_at, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId),
     sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number')
   ]);
   currentContest = contestRow;
   const players = (entryRows || []).map(p => ({
     id: p.profile_id, display_name: p.profiles.display_name, is_approved: p.is_approved,
-    alive: p.alive, eliminated_week: p.eliminated_week, second_chance_used: p.second_chance_used, is_commissioner: p.is_commissioner
+    alive: p.alive, eliminated_week: p.eliminated_week, second_chance_used: p.second_chance_used,
+    second_chance_requested_at: p.second_chance_requested_at, is_commissioner: p.is_commissioner
   })).sort((a,b) => a.display_name.localeCompare(b.display_name));
 
   // Which week's score-entry grid to show. Fixed 2026-09-15: this used to always be just
@@ -1717,6 +1781,24 @@ async function renderAdmin(body){
       </div>` : '<p>No picks submitted for this week yet.</p>';
   }
 
+  // Second-chance rebuy requests pending confirmation (added 2026-09-15):
+  // a player requests this themselves from their Contest Home tab; this
+  // card is the "notice" that surfaces it here so it isn't missed among
+  // the rest of the player list. Confirming (below) calls the same
+  // commissioner_grant_second_chance RPC as always, which now also
+  // requires this request to exist server-side.
+  const pendingSecondChance = players.filter(p => p.second_chance_requested_at && !p.second_chance_used);
+  const pendingSecondChanceHTML = pendingSecondChance.length ? `
+    <div class="card" style="border-color:var(--pending);">
+      <h3>Pending second-chance requests (${pendingSecondChance.length})</h3>
+      <p>Verify they've re-paid the entry fee, then confirm below.</p>
+      ${pendingSecondChance.map(p => `
+        <div class="lb-row">
+          <span>${esc(p.display_name)} <span class="pill elim">OUT WK ${p.eliminated_week}</span></span>
+          <button class="small" data-secondchance="${p.id}">Confirm rebuy</button>
+        </div>`).join('')}
+    </div>` : '';
+
   body.innerHTML = `
     <div class="card">
       <h3>Contest settings</h3>
@@ -1737,18 +1819,19 @@ async function renderAdmin(body){
       <button id="saveSettings" style="margin-top:14px;">Save contest settings</button>
     </div>
 
+    ${pendingSecondChanceHTML}
+
     <div class="card">
       <h3>Players</h3>
       ${(() => {
         const commissionerCount = players.filter(x => x.is_commissioner).length;
         return players.map(p => {
-          const eligibleForSecondChance = !p.alive && !p.second_chance_used && p.eliminated_week && p.eliminated_week <= contestRow.second_chance_min_week;
           const isLastCommissioner = p.is_commissioner && commissionerCount <= 1;
+          const rebuyPendingPill = (p.second_chance_requested_at && !p.second_chance_used) ? `<span class="pill pending">REBUY REQUESTED</span>` : '';
           return `
           <div class="lb-row">
-            <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''} ${p.is_commissioner ? `<span class="pill">Admin</span>` : ''}</span>
+            <span>${esc(p.display_name)} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''} ${rebuyPendingPill} ${p.is_commissioner ? `<span class="pill">Admin</span>` : ''}</span>
             <span class="row" style="gap:6px;width:auto;">
-              ${eligibleForSecondChance ? `<button class="small secondary" data-secondchance="${p.id}">2nd Chance</button>` : ''}
               <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
               <button class="small secondary" data-admin="${p.id}" data-current="${p.is_commissioner}" ${isLastCommissioner ? 'disabled title="Can\'t revoke the last remaining admin"' : ''}>${p.is_commissioner ? 'Revoke admin' : 'Make admin'}</button>
             </span>
@@ -1766,6 +1849,8 @@ async function renderAdmin(body){
         <h3>Week ${weekForScores} scores</h3>
         ${!isFinalized ? '<button class="small secondary" id="refreshScoresBtn" style="width:auto;">Refresh scores now</button>' : ''}
       </div>
+      ${!isFinalized && computedCount ? `<p>${computedCount} score${computedCount === 1 ? '' : 's'} below ${computedCount === 1 ? 'is' : 'are'} auto-filled from live NFL stats (tagged "Est.") and haven't been reviewed yet — double-check before finalizing.</p>` : ''}
+      ${!isFinalized ? '<p class="estimate-note">A score still blank a while after that player\'s game has ended usually means we couldn\'t automatically match them — enter it manually below. (Someone who played but recorded nothing gets auto-filled as 0, not left blank.)</p>' : ''}
       ${scoresTableHTML}
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
