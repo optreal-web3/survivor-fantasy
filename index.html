@@ -85,10 +85,12 @@
   .recap-row .recap-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
   .recap-row .recap-score{flex:0 0 auto;font-weight:700;white-space:nowrap;}
   .estimate-note{font-size:11.5px;color:var(--text-dim);font-style:italic;margin:2px 0 0;}
+  .scoring-note{font-size:11.5px;color:var(--text-dim);line-height:1.5;margin:10px 0 0;}
   .tablewrap{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
   th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
   th{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;}
+  .scoring-table td:last-child, .scoring-table th:last-child{text-align:right;white-space:nowrap;}
   .scores-grid{display:grid;grid-template-columns:1fr;gap:10px;}
   @media (min-width:640px){ .scores-grid{grid-template-columns:1fr 1fr;} }
   .player-score-card{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface-2);min-width:0;overflow:hidden;}
@@ -424,6 +426,57 @@ function ctTime(iso){
   return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', weekday:'short', hour:'numeric', minute:'2-digit'}).format(new Date(iso)) + ' CT';
 }
 function isSameDayCT(iso){ return ctDate(iso) === ctDate(new Date().toISOString()); }
+
+// DraftKings NFL Classic (full PPR) offensive scoring reference -- static
+// reference data (not pulled from the DB), shown as a collapsed accordion
+// under the Week recap's "Threshold to advance" line so players can check
+// exactly how their picks' points were calculated without leaving the
+// page. Mirrors the table on DraftKings' own NFL Classic contest rules
+// page (Offense section only, since this game only drafts QB/RB/WR/TE).
+const DK_SCORING_OFFENSE = [
+  ['Passing TD', '+4 Pts'],
+  ['25 Passing Yards', '+1 Pt (+0.04 Pts/Yard)'],
+  ['300+ Yard Passing Game', '+3 Pts'],
+  ['Interception', '-1 Pt'],
+  ['Rushing TD', '+6 Pts'],
+  ['10 Rushing Yards', '+1 Pt (+0.1 Pts/Yard)'],
+  ['100+ Yard Rushing Game', '+3 Pts'],
+  ['Receiving TD', '+6 Pts'],
+  ['10 Receiving Yards', '+1 Pt (+0.1 Pts/Yard)'],
+  ['100+ Receiving Yard Game', '+3 Pts'],
+  ['Reception', '+1 Pt'],
+  ['Punt/Kickoff/FG Return for TD', '+6 Pts'],
+  ['Fumble Lost', '-1 Pt'],
+  ['2 Pt Conversion (Pass, Run, or Catch)', '+2 Pts'],
+  ['Offensive Fumble Recovery TD', '+6 Pts']
+];
+// idSuffix keeps the accordion's target id unique if this ever ends up
+// rendered more than once on the same page at the same time.
+function dkScoringHTML(idSuffix){
+  const id = `dkScoring-${idSuffix}`;
+  return `
+    <p class="scoring-note">Scoring method used is the Draftkings NFL Classic full PPR system.</p>
+    <div class="faq-item" style="border-bottom:none;padding-bottom:0;">
+      <div class="faq-q dk-scoring-q" data-target="${id}" style="font-size:12.5px;color:var(--text-dim);">DraftKings scoring chart</div>
+      <div class="faq-a" id="${id}">
+        <div class="tablewrap">
+          <table class="scoring-table">
+            <tr><th>Offense</th><th>Points</th></tr>
+            ${DK_SCORING_OFFENSE.map(([label, pts]) => `<tr><td>${esc(label)}</td><td>${esc(pts)}</td></tr>`).join('')}
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+function wireDkScoringAccordion(){
+  document.querySelectorAll('.dk-scoring-q').forEach(el => {
+    el.onclick = () => {
+      const ans = document.getElementById(el.dataset.target);
+      const open = ans.classList.toggle('open');
+      el.classList.toggle('open', open);
+    };
+  });
+}
 
 // ---------- DATA LOADING ----------
 // Hub-level: who am I, and what contests exist / have I joined.
@@ -1208,6 +1261,7 @@ async function renderHome(body){
           ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — not final until the week is finalized.</p>` : ''}
           ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
         <div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
+        ${dkScoringHTML('recap')}
       </div>`;
   }
 
@@ -1227,6 +1281,7 @@ async function renderHome(body){
   wireHighScoresCard(body);
   wireNameEdit(body);
   wireFlairPicker(body);
+  wireDkScoringAccordion();
   const joinBtn = document.getElementById('joinFromHomeBtn');
   if(joinBtn){
     joinBtn.onclick = guard(async () => {
