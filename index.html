@@ -1167,7 +1167,7 @@ async function renderHome(body){
         ${currentTotal !== null ? `
           <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)'}">${fmtPts(currentTotal)} pts</b></div>
           ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — not final until the week is finalized.</p>` : ''}
-          ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes${syncWindowEndIso ? ` through ${ctTime(syncWindowEndIso)}` : ''}.${lastScoreUpdate ? ` Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
+          ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
         ` : ''}
         <div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
       </div>`;
@@ -1548,13 +1548,21 @@ async function renderPrizes(body){
 function faqItems(contest){
   const thresholdLine = contest ? `${contest.weekly_threshold}+ points` : "each contest's own posted threshold";
   const weeklyPrizeEnd = contest ? (contest.weekly_prize_end_week || 10) : 10;
-  return [
-    { q: "Can I join more than one contest at once?",
-      a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
+  return [    
+    { q: "Do I need to enter a new code every time I come back to this app?",
+      a: "No — once you enter a code, this device stays signed in. You'll only need to sign in again if you switch devices or browsers, sign out, or clear your browser's data." },
+    { q: "Is my email visible to other players?",
+      a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
+    { q: "Can I change my display name?",
+      a: "Yes — tap the pencil icon next to your name on the Hub, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
     { q: "What's the difference between the Hub and a contest?",
       a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
-    { q: "Do I need to enter a new code every time I want to lock in a pick?",
-      a: "No — once you enter a code, this device stays signed in. You'll only need to sign in again if you switch devices or browsers, sign out, or clear your browser's data." },
+    { q: "Can I join more than one contest at once?",
+      a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
+    { q: "How are the scores calculated and what formula is used?",
+      a: "Scores are calculated based on raw player data/stats and Draftkings NFL Classic full PPR points formula. For those details, visit the Draftkings website or search." },
+    { q: "What score do I need to survive each week?",
+      a: `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
       a: "No. Locking a pick is permanent — there's no undo, for you or the admin — so double check before confirming." },
     { q: "What happens if I don't finish my full lineup before the week closes?",
@@ -1563,24 +1571,18 @@ function faqItems(contest){
       a: "No — once you've used a player in a contest, they're off-limits for the rest of that contest's season. The same player can still be used in a different contest you've joined." },
     { q: "What if my chosen player's game already started?",
       a: "You can't pick them. The search only shows players whose game hasn't kicked off yet, and bye-week teams are excluded automatically." },
-    { q: "What score do I need to survive each week?",
-      a: `Your full team's combined score across all your starters (full-PPR scoring) needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
+    { q: "What if an NFL game gets cancelled or postponed?",
+      a: "A cancelled game, or one pushed to a later week entirely, counts as 0 points for that one slot — the rest of your lineup can still carry the team. A reschedule that stays within the same week (like Sunday to Monday) is scored normally. This isn't something the app tracks for you — keep an eye on news for whoever you've picked." },
     { q: "How is the grand prize paid out?",
       a: "100% of the grand prize pool goes to whoever is still alive at the very end of that contest. If more than one player survives to the finish, it's split evenly between them." },
     { q: "How are weekly prizes decided?",
       a: `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes run for the first ${weeklyPrizeEnd} weeks of the contest, with the pool split evenly across those weeks.` },
-    { q: "Is my email visible to other players?",
-      a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
-    { q: "What if an NFL game gets cancelled or postponed?",
-      a: "A cancelled game, or one pushed to a later week entirely, counts as 0 points for that one slot — the rest of your lineup can still carry the team. A reschedule that stays within the same week (like Sunday to Monday) is scored normally. This isn't something the app tracks for you — keep an eye on news for whoever you've picked." },
     { q: "I got eliminated — is there any way back in?",
       a: "That depends on the specific contest you're playing — second-chance rules (if any) vary from contest to contest. Check with that contest's own admin to see what's available to you there." },
     { q: "Where can I see past weeks' high scores?",
       a: "A contest's Home tab has a weekly high-scores card with ‹ › arrows to flip through every finalized week. For the full season-long list in one place, check the \"Weekly high score history\" section on that contest's Prizes tab — tap a week to expand its top 5." },
     { q: "How are the Standings ranked?",
-      a: "By cumulative points within that contest — the sum of your team's score across every finalized week — highest first. Anyone still alive is ranked above anyone eliminated. There's also a search box on Standings if you're just looking for one person." },
-    { q: "Can I change my display name?",
-      a: "Yes — tap the pencil icon next to your name on the Hub, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." }
+      a: "By cumulative points within that contest — the sum of your team's score across every finalized week — highest first. Anyone still alive is ranked above anyone eliminated. There's also a search box on Standings if you're just looking for one person." }
   ];
 }
 
@@ -1614,7 +1616,8 @@ function renderLegend(body){
       <p>At the heart of DKG sits the royal NFT Knights Collection — a limited set of digital relics that grant true virtual membership. Holding one of these NFTs is more than ownership; it is citizenship. Members gain exclusive access to the community's inner halls: private game modes, enhanced rewards, and unique utility that evolves with the ecosystem and DKG. Some NFTs unlock advantages in competitions, others grant cosmetic flexes or potential revenue-sharing privileges. In short, they turn holders from spectators into nobles of the realm.</p>
       <p>The flagship creation of Degen King Games is the Survivor Fantasy Challenge — a sharp, addictive twist on classic fantasy football. Instead of managing a full season roster week after week, players navigate a high-stakes elimination-style gauntlet. Each round brings brutal choices and unexpected upsets. Only the shrewdest, luckiest, and most resilient "survivors" claim the ultimate crown and the spoils that come with it.</p>
       <p>Degen King Games is not just another studio. It is a living experiment in community-owned entertainment — where the people who believed first become the architects, the NFT holders become the aristocracy, and every shipped game-build is another chapter in the ongoing saga of the DGEN DAO kingdom.</p>
-      <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real.<br>Welcome to the realm.</div>
+      <p>Welcome to the realm.</p> 
+      <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real.</div>
     </div>`;
 }
 
@@ -1764,8 +1767,6 @@ async function renderAdmin(body){
         <h3>Week ${weekForScores} scores</h3>
         ${!isFinalized ? '<button class="small secondary" id="refreshScoresBtn" style="width:auto;">Refresh scores now</button>' : ''}
       </div>
-      ${!isFinalized && computedCount ? `<p>${computedCount} score${computedCount === 1 ? '' : 's'} below ${computedCount === 1 ? 'is' : 'are'} auto-filled from live NFL stats (tagged "Est.") and haven't been reviewed yet — double-check before finalizing.</p>` : ''}
-      ${!isFinalized ? '<p class="estimate-note">A score still blank a while after that player\'s game has ended usually means we couldn\'t automatically match them — enter it manually below. (Someone who played but recorded nothing gets auto-filled as 0, not left blank.)</p>' : ''}
       ${scoresTableHTML}
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
