@@ -107,13 +107,9 @@
   .faq-q.open::after{content:'−';}
   .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
   .faq-a.open{display:block;}
-  .history-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);}
-  .history-item:last-child{border-bottom:none;}
-  .used-name{font-size:13.5px;color:var(--text);}
-  .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
+  .history-text{color:var(--text);line-height:1.9;}
+  .history-sep{color:var(--purple);margin:0 2px;}
   .history-empty{font-size:13px;color:var(--text-dim);padding:6px 0;font-style:italic;}
-  .history-q{align-items:baseline;}
-  .history-count{color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px;}
   .app-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:14px;}
   .app-header .brand-icon{width:150px;height:150px;object-fit:contain;display:block;}
   .app-header.hub-header .brand-icon{width:250px;height:250px;}
@@ -1081,13 +1077,9 @@ function renderPickHistoryHTML(){
       <p>Every player you've used in this contest, by position — once someone's on this list, they're locked out for the rest of this contest's season (you can still use them in a different contest). Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
-          <div class="faq-q history-q" data-pos="${pos}">${pos}<span class="history-count">(${grouped[pos].length})</span></div>
+          <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
           <div class="faq-a" id="history-a-${pos}">
-            ${grouped[pos].length ? grouped[pos].map(p => `
-              <div class="history-item">
-                <span class="used-name">${esc(p.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(p.team)})</span></span>
-                <span class="week-tag">WK ${p.week_number}</span>
-              </div>`).join('') : '<div class="history-empty">None yet</div>'}
+            ${grouped[pos].length ? `<div class="history-text">${grouped[pos].map(p => `${esc(p.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(p.team)})</span>`).join(' <span class="history-sep">★</span> ')}</div>` : '<div class="history-empty">None yet</div>'}
           </div>
         </div>`).join('')}
     </div>`;
