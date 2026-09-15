@@ -1185,7 +1185,7 @@ function renderPickHistoryHTML(){
   return `
     <div class="card">
       <h3>Your pick history in this contest</h3>
-      <p>Every player you've used in this contest, by position — once someone's on this list, they're locked out for the rest of this contest's season (you can still use them in a different contest). Keep this as your own record in case a pick's ever in question.</p>
+      <p>Every player you've used in this contest. Once a player is on this list, they're locked out for the rest of the contest. (You can still use them in a different contests). Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
           <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
@@ -1421,7 +1421,6 @@ async function renderHighScoresCardHTML(){
       <div style="margin-top:8px;">${weekTop5ListHTML(top5)}</div>
       <div class="divider"></div>
       <h3>Chosen Stars of the Week</h3>
-      <p style="margin-top:2px;">Top 5 individual NFL scores among everyone's picks this week.</p>
       <div style="margin-top:8px;">${weekTopPlayersListHTML(topPlayers)}</div>
     </div>`;
 }
@@ -1664,13 +1663,11 @@ async function renderStandings(body){
       </div>`).join('') || '<p>No approved players yet.</p>';
   }
 
-  const liveNote = isLive ? `<p class="estimate-note">Live and unofficial — includes week ${liveWeekNumber} scores as they sync in, updated every ~15 minutes. Rankings and Caution/Alive status may shift until the admin finalizes the week.</p>` : '';
-
   body.innerHTML = `
     ${eliminatedHTML}
     <div class="card">
       <h3>Standings</h3>
-      <p>Ranked by cumulative points across every finalized week${isLive ? ' plus the current live week' : ''} in this contest.</p>
+      <p>Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this contest format other than bragging rights.</p>
       ${liveNote}
       <input id="standingsSearch" placeholder="Search players..." style="margin-top:10px;"/>
       <div id="survivorsList" style="margin-top:6px;">${survivorsRowsHTML(rows)}</div>
