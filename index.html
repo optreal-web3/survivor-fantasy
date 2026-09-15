@@ -1663,6 +1663,8 @@ async function renderStandings(body){
       </div>`).join('') || '<p>No approved players yet.</p>';
   }
 
+  const liveNote = isLive ? `<p class="estimate-note">Live and unofficial — includes week ${liveWeekNumber} scores as they sync in, updated every ~15 minutes. Rankings and Caution/Alive status may shift until the admin finalizes the week.</p>` : '';
+
   body.innerHTML = `
     ${eliminatedHTML}
     <div class="card">
