@@ -85,7 +85,6 @@
   .recap-row .recap-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
   .recap-row .recap-score{flex:0 0 auto;font-weight:700;white-space:nowrap;}
   .estimate-note{font-size:11.5px;color:var(--text-dim);font-style:italic;margin:2px 0 0;}
-  .scoring-note{font-size:11.5px;color:var(--text-dim);line-height:1.5;margin:10px 0 0;}
   .tablewrap{overflow-x:auto;}
   table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
   th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
@@ -455,9 +454,8 @@ const DK_SCORING_OFFENSE = [
 function dkScoringHTML(idSuffix){
   const id = `dkScoring-${idSuffix}`;
   return `
-    <p class="scoring-note">Scoring method used is the Draftkings NFL Classic full PPR system.</p>
     <div class="faq-item" style="border-bottom:none;padding-bottom:0;">
-      <div class="faq-q dk-scoring-q" data-target="${id}" style="font-size:12.5px;color:var(--text-dim);">DraftKings scoring chart</div>
+      <div class="faq-q dk-scoring-q" data-target="${id}" style="font-size:12.5px;color:var(--text-dim);">Scoring: Draftkings NFL Classic full PPR - expand for details.</div>
       <div class="faq-a" id="${id}">
         <div class="tablewrap">
           <table class="scoring-table">
@@ -1691,6 +1689,8 @@ function faqItems(contest){
       a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
     { q: "Can I join more than one contest at once?",
       a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
+    { q: "How are the scores calculated and what formula is used?",
+      a: "Scores are calculated based on raw player data/stats and Draftkings NFL Classic full PPR points formula. For those details, visit the Draftkings website or search." },
     { q: "What score do I need to survive each week?",
       a: `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
@@ -1710,7 +1710,9 @@ function faqItems(contest){
     { q: "I got eliminated — is there any way back in?",
       a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. If you don't see that button, check with that contest's own admin." },
     { q: "Where can I see past weeks' high scores?",
-      a: "A contest's Home tab has a weekly high-scores card with ‹ › arrows to flip through every finalized week. For the full season-long list in one place, check the \"Weekly high score history\" section on that contest's Prizes tab — tap a week to expand its top 5." }
+      a: "A contest's Home tab has a weekly high-scores card with ‹ › arrows to flip through every finalized week. For the full season-long list in one place, check the \"Weekly high score history\" section on that contest's Prizes tab — tap a week to expand its top 5." },
+    { q: "How are the Standings ranked?",
+      a: "By cumulative points within that contest — the sum of your team's score across every finalized week — highest first. Anyone still alive is ranked above anyone eliminated. There's also a search box on Standings if you're just looking for one person." }
   ];
 }
 
