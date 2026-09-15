@@ -191,7 +191,17 @@ let contests = [];          // every non-draft contest, for the Hub list
 let myEntries = {};         // contest_id -> this player's contest_entries row (only contests they've joined)
 let currentContestId = null, currentContest = null, currentEntry = null;
 let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
-let recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
+// recentWeekNumbers: every week (ascending, oldest first) the player has picks in within this
+// contest whose real kickoff (weeks.closes_at) has already passed -- i.e. every week there's
+// actually something to recap yet. Added 2026-09-15 alongside the recap card's prev/next
+// arrows: previously the recap card just showed the single highest week_number the player had
+// ANY pick in, with no check that the week had even started -- so locking in next week's
+// lineup ahead of time immediately (and wrongly) flipped the card to "Week N+1 recap" showing
+// an unplayed lineup. recapWeekIndex pages through recentWeekNumbers, same convention as
+// hsWeekIndex/displayWeekNumbers() below for the High Scores card. recentWeekNumber is just
+// recentWeekNumbers[recapWeekIndex], kept as its own variable since renderHome() and the
+// scoreboard's week badge read it directly.
+let recentWeekNumbers = [], recapWeekIndex = -1, recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
 let weekGamesMap = {};
 let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in the CURRENT contest
 // The most recent NOT-yet-finalized week (contest-wide, not player-specific) that already has
@@ -573,22 +583,43 @@ async function loadWeekGames(){
   weekGamesMap = {};
   (data||[]).forEach(g => weekGamesMap[g.team] = g.kickoff_at);
 }
-// Contest Home's "recap" needs the most recent week the player has ANY
-// picks in *within this contest*, independent of currentWeek -- this is
-// what keeps last week's lineup/score visible after the week flips over.
+// Contest Home's "recap" needs every week the player has picks in *within this contest*
+// that has actually been PLAYED -- its real kickoff (weeks.closes_at) already passed --
+// independent of currentWeek. Gating on "has started", not just "has a pick", is what stops
+// the card from flipping to (and mislabeling as a "recap") a future week the moment the
+// player locks in a pick for it ahead of time -- see the note on recentWeekNumbers above.
+// Populates recentWeekNumbers (every such week, ascending) and then loads the one the
+// prev/next arrows currently point at (recapWeekIndex, defaulting to the most recent).
 async function loadRecentWeek(){
   const { data } = await sb.from('picks_with_scores').select('*')
     .eq('contest_id', currentContestId).eq('player_id', session.user.id)
     .order('week_number', { ascending: false }).limit(50);
-  if(!data || !data.length){ recentWeekNumber = null; recentWeekPicks = []; recentWeekRow = null; recentWeekClosesAt = null; return; }
-  recentWeekNumber = data[0].week_number;
+  if(!data || !data.length){
+    recentWeekNumbers = []; recapWeekIndex = -1; recentWeekNumber = null;
+    recentWeekPicks = []; recentWeekRow = null; recentWeekClosesAt = null;
+    return;
+  }
+  const pickedWeekNumbers = [...new Set(data.map(p => p.week_number))];
+  const { data: weekRows } = await sb.from('weeks').select('week_number, closes_at').in('week_number', pickedWeekNumbers);
+  const closesAtByWeek = {};
+  (weekRows || []).forEach(w => { closesAtByWeek[w.week_number] = w.closes_at; });
+  const now = new Date();
+  recentWeekNumbers = pickedWeekNumbers
+    .filter(wk => closesAtByWeek[wk] && new Date(closesAtByWeek[wk]) <= now)
+    .sort((a,b) => a - b);
+
+  if(!recentWeekNumbers.length){
+    recapWeekIndex = -1; recentWeekNumber = null;
+    recentWeekPicks = []; recentWeekRow = null; recentWeekClosesAt = null;
+    return;
+  }
+  if(recapWeekIndex < 0 || recapWeekIndex >= recentWeekNumbers.length) recapWeekIndex = recentWeekNumbers.length - 1;
+  recentWeekNumber = recentWeekNumbers[recapWeekIndex];
   recentWeekPicks = data.filter(p => p.week_number === recentWeekNumber);
-  const [{ data: cwRow }, { data: wkRow }] = await Promise.all([
-    sb.from('contest_weeks').select('*').eq('contest_id', currentContestId).eq('week_number', recentWeekNumber).maybeSingle(),
-    sb.from('weeks').select('closes_at').eq('week_number', recentWeekNumber).maybeSingle()
-  ]);
+  const { data: cwRow } = await sb.from('contest_weeks').select('*')
+    .eq('contest_id', currentContestId).eq('week_number', recentWeekNumber).maybeSingle();
   recentWeekRow = cwRow;
-  recentWeekClosesAt = wkRow ? wkRow.closes_at : null;
+  recentWeekClosesAt = closesAtByWeek[recentWeekNumber] || null;
 }
 // Which week (if any) is "live" -- open (not yet finalized) but already has at least one pick
 // in it, i.e. currently being played out / scored. Used by the Home "Weekly high scores" card
@@ -1279,7 +1310,13 @@ async function renderHome(body){
 
     recapHTML = `
       <div class="card">
-        <h3>Week ${recentWeekNumber} recap</h3>
+        <div class="row">
+          <h3>Week ${recentWeekNumber} recap</h3>
+          <span class="row" style="gap:6px;width:auto;">
+            <button class="small secondary" id="recapPrev" ${recapWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
+            <button class="small secondary" id="recapNext" ${recapWeekIndex >= recentWeekNumbers.length - 1 ? 'disabled' : ''}>›</button>
+          </span>
+        </div>
         ${!isFinal ? '<p>Scoring in progress — the admin hasn\'t finalized this week yet.</p>' : ''}
         ${recapSlotsHTML}
         ${currentTotal !== null ? `
@@ -1305,6 +1342,7 @@ async function renderHome(body){
     ${highScoresHTML}
   `;
   wireHighScoresCard(body);
+  wireRecapCard(body);
   wireNameEdit(body);
   wireFlairPicker(body);
   wireDkScoringAccordion();
@@ -1391,6 +1429,15 @@ function wireHighScoresCard(body){
   const prev = document.getElementById('hsPrev'), next = document.getElementById('hsNext');
   if(prev) prev.onclick = async () => { hsWeekIndex--; await renderHome(body); };
   if(next) next.onclick = async () => { hsWeekIndex++; await renderHome(body); };
+}
+// Recap card's own prev/next arrows (added 2026-09-15, same pattern as the High Scores
+// card above) -- pages recapWeekIndex back/forward through recentWeekNumbers and reloads,
+// rather than just re-rendering with cached data, since scores can still be live-updating
+// for the most recent played week.
+function wireRecapCard(body){
+  const prev = document.getElementById('recapPrev'), next = document.getElementById('recapNext');
+  if(prev) prev.onclick = guard(async () => { recapWeekIndex--; await loadRecentWeek(); await renderHome(body); });
+  if(next) next.onclick = guard(async () => { recapWeekIndex++; await loadRecentWeek(); await renderHome(body); });
 }
 
 // Picks is the action tab: building/locking this week's lineup within the
