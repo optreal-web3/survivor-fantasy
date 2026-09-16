@@ -50,6 +50,8 @@
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
     --bg-grad-end:#242424;
+    --dgen:#8B5CF6; --dgen-dim:rgba(139,92,246,0.12);
+    --usdc:#00D1FF; --usdc-dim:rgba(0,209,255,0.12);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -79,6 +81,9 @@
   .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
   .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
   .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
+  .pill.free{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
+  .pill.dgen{background:var(--dgen-dim);color:var(--dgen);border-color:var(--dgen);}
+  .pill.usdc{background:var(--usdc-dim);color:var(--usdc);border-color:var(--usdc);}
   .sc-icon{width:13px;height:13px;color:var(--pending);vertical-align:-2px;flex:0 0 auto;}
   .bottom-nav{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
   @media (min-width:660px){ .bottom-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:12px 12px 0 0;bottom:0;} }
@@ -246,15 +251,40 @@ function clearBanner(){ clearTimeout(bannerTimeout); bannerTimeout = null; banne
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
 
+// Currency helpers (added 2026-09-16): entry fees/prizes are always one of
+// Free, USDC, or DGEN -- no dollar signs anywhere. currencyForContest()
+// resolves the label a given contest should show (is_free wins over
+// whatever's stored in contests.currency, since "free" isn't itself a
+// stored currency value); currencyPillHTML() renders the small colored
+// pill (green/free, bright neon blue/USDC, purple/DGEN); fmtAmt() is the
+// plain numeric formatter that replaced the old money() (no currency
+// symbol prefix -- the pill at the top of a page carries that now).
+function currencyForContest(c){
+  if(!c) return 'free';
+  return c.is_free ? 'free' : (c.currency || 'usdc');
+}
+function currencyLabel(currency){
+  return currency === 'free' ? 'FREE' : currency.toUpperCase();
+}
+function currencyPillHTML(currency){
+  return `<span class="pill ${currency}">${currencyLabel(currency)}</span>`;
+}
+function fmtAmt(n){
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 // Monochrome tab icons -- plain line-art SVGs (no built-in color) so each
 // tab just inherits the surrounding text color: grey when inactive, the
 // app's blue accent when active. Keeps the tab row in the app's own
 // palette instead of full-color emoji.
+// prizes (updated 2026-09-16): was a circle with a dollar sign -- now a
+// coin (the circle) with a small sparkle/gem mark in the middle, since
+// entry fees and prizes are denominated in USDC/DGEN, never dollars.
 const ICON_PATHS = {
   home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.8"/><path d="M9.5 20v-6h5v6"/>',
   picks: '<g transform="rotate(-30 12 12)"><path d="M4 12c2-5 6-8 8-8s6 3 8 8c-2 5-6 8-8 8s-6-3-8-8Z"/><path d="M6.5 12h11"/><path d="M10 10.3v3.4"/><path d="M12 10v4"/><path d="M14 10.3v3.4"/></g>',
   standings: '<path d="M4 20V13"/><path d="M12 20V5"/><path d="M20 20v-9"/>',
-  prizes: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9"/><path d="M9.7 9.7c0-1.1.9-1.9 2.3-1.9s2.3.8 2.3 1.7c0 2.6-4.6 1.4-4.6 4 0 1 .9 1.9 2.3 1.9s2.3-.8 2.3-1.9"/>',
+  prizes: '<circle cx="12" cy="12" r="8.5"/><path d="M12 6L13.1 10.9L18 12L13.1 13.1L12 18L10.9 13.1L6 12L10.9 10.9Z" fill="currentColor" stroke="none"/>',
   faq: '<circle cx="12" cy="12" r="8.5"/><path d="M9.3 9.6a2.7 2.7 0 1 1 4.3 2.2c-.9.6-1.6 1.1-1.6 2.3"/><circle cx="12" cy="16.7" r="0.9" fill="currentColor" stroke="none"/>',
   legend: '<path d="M12 6.2c-1.9-1.3-4.3-2-6.8-2v12.6c2.5 0 4.9.7 6.8 2 1.9-1.3 4.3-2 6.8-2V4.2c-2.5 0-4.9.7-6.8 2Z"/><path d="M12 6.2v12.6"/>',
   pencil: '<path d="M4 20l.7-3.9L15.8 5a1.6 1.6 0 0 1 2.3 0l0.9 0.9a1.6 1.6 0 0 1 0 2.3L7.9 19.3 4 20Z"/><path d="M14.1 6.7l3.2 3.2"/>',
@@ -917,7 +947,8 @@ function renderHubShell(){
 
 function contestCardHTML(c){
   const entry = myEntries[c.id];
-  const feeLabel = c.is_free ? 'Free' : (c.entry_fee ? `$${Number(c.entry_fee).toLocaleString()} entry` : 'Paid');
+  const currency = currencyForContest(c);
+  const feeLabel = c.is_free ? 'Free' : (c.entry_fee ? `${fmtAmt(c.entry_fee)} ${currency.toUpperCase()} entry` : 'Paid');
   const statusLabel = { open: 'Open for signups', active: 'In progress', completed: 'Completed' }[c.status] || c.status;
   const signupClosed = !!(c.signup_closes_at && new Date(c.signup_closes_at) < new Date());
   const pendingApprovalPill = !c.platform_approved ? `<span class="pill pending" style="margin-left:6px;">AWAITING APPROVAL</span>` : '';
@@ -953,12 +984,13 @@ function renderCreateContestForm(area){
       <label>Contest name (40 characters max)</label>
       <input id="cc_name" maxlength="40" placeholder="e.g. Week 3 Side Pool"/>
       <label>Entry</label>
-      <select id="cc_free">
-        <option value="free">Free to play</option>
-        <option value="paid">Paid entry</option>
+      <select id="cc_currency">
+        <option value="free">Free to Play</option>
+        <option value="usdc">Paid Entry USDC</option>
+        <option value="dgen">Paid Entry DGEN</option>
       </select>
       <div id="cc_feeWrap" style="display:none;">
-        <label>Entry fee ($)</label>
+        <label id="cc_feeLabel">Entry fee</label>
         <input id="cc_fee" type="number" step="0.01" min="0" placeholder="e.g. 20"/>
       </div>
       <label>Weekly point threshold to survive</label>
@@ -971,14 +1003,17 @@ function renderCreateContestForm(area){
         <button class="small" id="cc_create" style="flex:1;">Create contest</button>
       </div>
     </div>`;
-  document.getElementById('cc_free').onchange = (e) => {
-    document.getElementById('cc_feeWrap').style.display = e.target.value === 'paid' ? 'block' : 'none';
+  document.getElementById('cc_currency').onchange = (e) => {
+    const val = e.target.value;
+    document.getElementById('cc_feeWrap').style.display = val === 'free' ? 'none' : 'block';
+    document.getElementById('cc_feeLabel').textContent = `Entry fee (${val.toUpperCase()})`;
   };
   document.getElementById('cc_cancel').onclick = () => { area.innerHTML = ''; };
   document.getElementById('cc_create').onclick = guard(async () => {
     const name = document.getElementById('cc_name').value.trim();
     if(!name){ showBanner('Contest name is required.'); return; }
-    const isFree = document.getElementById('cc_free').value === 'free';
+    const currencyVal = document.getElementById('cc_currency').value;
+    const isFree = currencyVal === 'free';
     const fee = isFree ? null : (parseFloat(document.getElementById('cc_fee').value) || null);
     const threshold = parseFloat(document.getElementById('cc_threshold').value) || 100;
     const signup = document.getElementById('cc_signup').value;
@@ -987,7 +1022,8 @@ function renderCreateContestForm(area){
       p_is_free: isFree,
       p_entry_fee: fee,
       p_weekly_threshold: threshold,
-      p_signup_closes_at: signup ? new Date(signup).toISOString() : null
+      p_signup_closes_at: signup ? new Date(signup).toISOString() : null,
+      p_currency: isFree ? 'usdc' : currencyVal
     });
     if(error){ showBanner(error.message); return; }
     await Promise.all([loadContests(), loadMyEntries()]);
@@ -1784,6 +1820,7 @@ async function renderPrizes(body){
     ])
   ]);
   currentContest = contestRow;
+  const currency = currencyForContest(contestRow);
   const fee = contestRow.entry_fee || 0;
   const total = fee * ((count || 0) + (secondChanceCount || 0));
   const organizer = total * contestRow.organizer_pct / 100;
@@ -1793,23 +1830,22 @@ async function renderPrizes(body){
   const perWeek = weekly / weeks;
   const survivors = aliveCount || 0;
   const perSurvivor = survivors > 0 ? grand / survivors : 0;
-  const money = n => '$' + n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
   body.innerHTML = `
     <div class="card">
       <h3>Prize pool</h3>
-      <div class="stat"><span>Entry fee</span><b>${fee ? money(fee) : '—'}</b></div>
+      <div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fee ? fmtAmt(fee) : (currency === 'free' ? '' : '—')}</b></div>
       <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
       ${secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
-      <div class="stat"><span>Total pool</span><b>${money(total)}</b></div>
+      <div class="stat"><span>Total pool</span><b>${fmtAmt(total)}</b></div>
       <div class="divider"></div>
-      <div class="stat"><span>Grand prize pool (${contestRow.grand_pct}%)</span><b>${money(grand)}</b></div>
-      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${money(perSurvivor)} each` : '—'}</b></div>
-      <div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${money(weekly)} total</b></div>
-      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${money(perWeek)}</b></div>
+      <div class="stat"><span>Grand prize pool (${contestRow.grand_pct}%)</span><b>${fmtAmt(grand)}</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${fmtAmt(perSurvivor)} each` : '—'}</b></div>
+      <div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${fmtAmt(weekly)} total</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${fmtAmt(perWeek)}</b></div>
       <div class="note">Weekly prizes are paid weeks 1 through ${weeks}. Totals update automatically as more players are approved.</div>
       <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
-      <div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${money(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.</div>
+      <div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.</div>
     </div>
     <div class="card">
       <h3>Weekly high score history</h3>
@@ -2032,8 +2068,19 @@ async function renderAdmin(body){
   body.innerHTML = `
     <div class="card">
       <h3>Contest settings</h3>
-      <label>Signup closes at</label>
-      <input id="s_signup" type="datetime-local" value="${contestRow.signup_closes_at ? contestRow.signup_closes_at.slice(0,16) : ''}" />
+      <div class="row">
+        <div style="flex:1;min-width:0;">
+          <label>Signup closes at</label>
+          <input id="s_signup" type="datetime-local" value="${contestRow.signup_closes_at ? contestRow.signup_closes_at.slice(0,16) : ''}" />
+        </div>
+        <div style="flex:1;min-width:0;">
+          <label>Contest Currency</label>
+          <select id="s_currency">
+            <option value="usdc" ${contestRow.currency === 'usdc' ? 'selected' : ''}>USDC</option>
+            <option value="dgen" ${contestRow.currency === 'dgen' ? 'selected' : ''}>DGEN</option>
+          </select>
+        </div>
+      </div>
       <label>Weekly point threshold / Weekly prizes through week</label>
       <div class="row">
         <input id="s_threshold" type="number" value="${contestRow.weekly_threshold}" style="width:auto;flex:1;min-width:0;" placeholder="Threshold"/>
@@ -2121,6 +2168,7 @@ async function renderAdmin(body){
     const signup = document.getElementById('s_signup').value;
     await sb.rpc('commissioner_update_weekly_threshold', { p_contest_id: currentContestId, p_threshold: parseFloat(document.getElementById('s_threshold').value) });
     await sb.rpc('commissioner_set_signup_deadline', { p_contest_id: currentContestId, p_deadline: signup ? new Date(signup).toISOString() : null });
+    await sb.rpc('commissioner_update_currency', { p_contest_id: currentContestId, p_currency: document.getElementById('s_currency').value });
     await sb.rpc('commissioner_update_prize_settings', {
       p_contest_id: currentContestId,
       p_entry_fee: parseFloat(document.getElementById('s_fee').value) || null,
@@ -2295,4 +2343,3 @@ sb.auth.onAuthStateChange(async (event, s) => {
 </script>
 </body>
 </html>
-</content>
