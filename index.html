@@ -94,6 +94,16 @@
   .kickoff-tag{font-size:11.5px;font-weight:700;}
   .lb-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;gap:8px;}
   .lb-row:last-child{border-bottom:none;}
+  /* Admin tab's Players list: name+pills and the action buttons each get their own full-width row
+     below ~480px instead of wrapping into each other mid-line (which used to visually overlap on a
+     narrow phone) -- side by side again once there's room. */
+  .admin-player-row{flex-wrap:wrap;row-gap:8px;}
+  .admin-player-row .name-block{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:1 1 100%;min-width:0;}
+  .admin-player-row .actions-block{flex:1 1 100%;justify-content:flex-start;}
+  @media (min-width:480px){
+    .admin-player-row .name-block{flex:1 1 auto;}
+    .admin-player-row .actions-block{flex:0 0 auto;justify-content:flex-end;}
+  }
   .divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
   .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.5;border:1px solid var(--border);}
   .banner{background:var(--elim-dim);border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;line-height:1.5;}
@@ -1984,11 +1994,17 @@ async function renderAdmin(body){
         const commissionerCount = players.filter(x => x.is_commissioner).length;
         return players.map(p => {
           const isLastCommissioner = p.is_commissioner && commissionerCount <= 1;
-          const rebuyPendingPill = (p.second_chance_requested_at && !p.second_chance_used) ? `<span class="pill pending">REBUY REQUESTED</span>` : '';
+          // Housekeeping pills (elimination week, pending-rebuy) are deliberately NOT repeated here --
+          // they already live on the "Pending second-chance requests" card above and (for elimination)
+          // aren't needed to operate this list at all. Keeping this row down to name + used-second-chance
+          // icon + Admin tag is what keeps it from overlapping/wrapping badly on a narrow phone screen.
+          const nameBits = [esc(p.display_name)];
+          if(p.second_chance_used) nameBits.push(secondChanceIconHTML());
+          if(p.is_commissioner) nameBits.push('<span class="pill">Admin</span>');
           return `
-          <div class="lb-row">
-            <span>${esc(p.display_name)}${p.second_chance_used ? ' ' + secondChanceIconHTML() : ''} ${!p.alive ? `<span class="pill elim">OUT WK ${p.eliminated_week}</span>` : ''} ${rebuyPendingPill} ${p.is_commissioner ? `<span class="pill">Admin</span>` : ''}</span>
-            <span class="row" style="gap:6px;width:auto;">
+          <div class="lb-row admin-player-row">
+            <span class="name-block">${nameBits.join(' ')}</span>
+            <span class="row actions-block" style="gap:6px;width:auto;">
               <button class="small ${p.is_approved ? 'secondary' : ''}" data-approve="${p.id}" data-current="${p.is_approved}">${p.is_approved ? 'Approved' : 'Approve'}</button>
               <button class="small secondary" data-admin="${p.id}" data-current="${p.is_commissioner}" ${isLastCommissioner ? 'disabled title="Can\'t revoke the last remaining admin"' : ''}>${p.is_commissioner ? 'Revoke admin' : 'Make admin'}</button>
             </span>
