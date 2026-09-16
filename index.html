@@ -1060,8 +1060,9 @@ async function renderPlatformAdmin(body){
   ]);
   const countByContest = {};
   (entryRows || []).forEach(r => { countByContest[r.contest_id] = (countByContest[r.contest_id] || 0) + 1; });
-  const pendingContests = (allContests || []).filter(c => !c.platform_approved);
-  const liveContests = (allContests || []).filter(c => c.platform_approved);
+  const pendingContests = (allContests || []).filter(c => !c.platform_approved && c.status !== 'archived');
+  const archivedContests = (allContests || []).filter(c => c.status === 'archived');
+  const liveContests = (allContests || []).filter(c => c.platform_approved && c.status !== 'archived');
   const adminCount = (allProfiles || []).filter(p => p.is_platform_admin).length;
 
   body.innerHTML = `
@@ -1074,9 +1075,10 @@ async function renderPlatformAdmin(body){
             <div style="color:var(--text);font-weight:700;">${esc(c.name)}</div>
             <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${countByContest[c.id] || 0} entrants · created ${ctDate(c.created_at)} · by ${esc(c.profiles?.display_name || 'Unknown')}</div>
           </span>
-          <span class="row" style="gap:6px;width:auto;">
+          <span class="row" style="gap:6px;width:auto;flex-wrap:wrap;">
             <button class="small secondary" data-padmin-reject="${c.id}">Reject</button>
             <button class="small" data-padmin-approve="${c.id}">Approve</button>
+            <button class="small danger" data-padmin-delete="${c.id}" data-name="${esc(c.name)}">Delete</button>
           </span>
         </div>`).join('') : '<p>Nothing waiting on approval.</p>'}
     </div>
@@ -1090,9 +1092,28 @@ async function renderPlatformAdmin(body){
             <div style="color:var(--text);font-weight:700;">${esc(c.name)} <span class="pill" style="margin-left:4px;">${esc(c.status)}</span> ${c.visibility === 'unlisted' ? '<span class="pill pending">UNLISTED</span>' : ''}</div>
             <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${countByContest[c.id] || 0} entrants · created ${ctDate(c.created_at)} · by ${esc(c.profiles?.display_name || 'Unknown')}</div>
           </span>
-          <button class="small" data-padmin-enter="${c.id}">Enter</button>
+          <span class="row" style="gap:6px;width:auto;flex-wrap:wrap;">
+            <button class="small" data-padmin-enter="${c.id}">Enter</button>
+            <button class="small secondary" data-padmin-archive="${c.id}">Archive</button>
+            <button class="small danger" data-padmin-delete="${c.id}" data-name="${esc(c.name)}">Delete</button>
+          </span>
         </div>`).join('') : '<p>No contests yet.</p>'}
     </div>
+
+    <div class="card">
+      <h3>Archived contests</h3>
+      <p>Hidden from the Hub for everyone. Nothing is deleted when a contest is archived -- restore one below if it was archived by mistake or should run again.</p>
+      ${archivedContests.length ? archivedContests.map(c => `
+        <div class="lb-row" style="flex-wrap:wrap;">
+          <span>
+            <div style="color:var(--text);font-weight:700;">${esc(c.name)}</div>
+            <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${countByContest[c.id] || 0} entrants · created ${ctDate(c.created_at)} · by ${esc(c.profiles?.display_name || 'Unknown')}</div>
+          </span>
+          <button class="small" data-padmin-restore="${c.id}">Restore</button>
+        </div>`).join('') : '<p>Nothing archived.</p>'}
+    </div>
+
+    <div id="padminConfirm"></div>
 
     <div class="card">
       <h3>Global Admins</h3>
@@ -1129,6 +1150,47 @@ async function renderPlatformAdmin(body){
       await loadContests();
       renderPlatformAdmin(body);
     });
+  });
+  document.querySelectorAll('[data-padmin-archive]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: btn.dataset.padminArchive });
+      if(error){ showBanner(error.message); return; }
+      showBanner('Contest archived.');
+      await loadContests();
+      renderPlatformAdmin(body);
+    });
+  });
+  document.querySelectorAll('[data-padmin-restore]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const { error } = await sb.rpc('platform_admin_restore_contest', { p_contest_id: btn.dataset.padminRestore });
+      if(error){ showBanner(error.message); return; }
+      showBanner('Contest restored — it\'s back on the Hub.');
+      await loadContests();
+      renderPlatformAdmin(body);
+    });
+  });
+  document.querySelectorAll('[data-padmin-delete]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.padminDelete;
+      const name = btn.dataset.name;
+      document.getElementById('padminConfirm').innerHTML = `
+        <div class="card" style="border-color:var(--elim);">
+          <p style="color:var(--text);">Permanently delete "${esc(name)}"? This can't be undone — all contest data will be erased. This only works if nobody besides its creator has joined or picked yet.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="cancelPadminDelete" style="flex:1;">Cancel</button>
+            <button class="small danger" id="confirmPadminDelete" style="flex:1;">Delete permanently</button>
+          </div>
+        </div>`;
+      document.getElementById('cancelPadminDelete').onclick = () => { document.getElementById('padminConfirm').innerHTML = ''; };
+      document.getElementById('confirmPadminDelete').onclick = guard(async () => {
+        const { error } = await sb.rpc('commissioner_delete_contest', { p_contest_id: id });
+        if(error){ showBanner(error.message); return; }
+        showBanner('Contest deleted.');
+        document.getElementById('padminConfirm').innerHTML = '';
+        await loadContests();
+        renderPlatformAdmin(body);
+      });
+    };
   });
   document.querySelectorAll('[data-gadmin]').forEach(btn => {
     btn.onclick = guard(async () => {
@@ -1806,7 +1868,7 @@ function faqItems(contest){
     { q: "How is the grand prize paid out?",
       a: "100% of the grand prize pool goes to whoever is still alive at the very end of that contest. If more than one player survives to the finish, it's split evenly between them." },
     { q: "How are weekly prizes decided?",
-      a: `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest. If available, the prize pool is split evenly across eligible weeks.` },
+      a: `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.` },
     { q: "I got eliminated — is there any way back in?",
       a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. If you don't see that button, check with that contest's own admin." },
     { q: "Where can I see past weeks' high scores?",
@@ -1965,6 +2027,8 @@ async function renderAdmin(body){
         </div>`).join('')}
     </div>` : '';
 
+  const soleEntrant = players.length <= 1;
+
   body.innerHTML = `
     <div class="card">
       <h3>Contest settings</h3>
@@ -2027,6 +2091,16 @@ async function renderAdmin(body){
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
       <div id="finalizeConfirm"></div>
+    </div>
+
+    <div class="card" style="border-color:var(--elim);">
+      <h3>Danger zone</h3>
+      <p>Archiving hides this contest from the Hub for everyone — no data is deleted, and a Global Admin can restore it later. Deleting is only available while nobody besides you has joined or picked in this contest, and permanently erases it.</p>
+      <div class="row" style="gap:8px;margin-top:10px;">
+        <button class="small secondary" id="archiveContestBtn" style="flex:1;">Archive contest</button>
+        <button class="small danger" id="deleteContestBtn" style="flex:1;" ${soleEntrant ? '' : 'disabled title="Other players have joined — archive instead"'}>Delete contest</button>
+      </div>
+      <div id="dangerZoneConfirm"></div>
     </div>
   `;
 
@@ -2121,6 +2195,37 @@ async function renderAdmin(body){
       });
     };
   }
+
+  document.getElementById('archiveContestBtn').onclick = guard(async () => {
+    const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: currentContestId });
+    if(error){ showBanner(error.message); return; }
+    showBanner('Contest archived — it\'s hidden from the Hub. A Global Admin can restore it if needed.');
+    currentContestId = null; activeTab = 'hub';
+    await Promise.all([loadContests(), loadMyEntries()]);
+    render();
+  });
+  const deleteContestBtn = document.getElementById('deleteContestBtn');
+  if(deleteContestBtn && !deleteContestBtn.disabled){
+    deleteContestBtn.onclick = () => {
+      document.getElementById('dangerZoneConfirm').innerHTML = `
+        <div class="confirm-box">
+          <p style="color:var(--text);">Permanently delete "${esc(currentContest?.name || 'this contest')}"? This can't be undone — all contest data will be erased. This only works if nobody else has joined or picked yet.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="cancelDelete" style="flex:1;">Cancel</button>
+            <button class="small danger" id="confirmDelete" style="flex:1;">Delete permanently</button>
+          </div>
+        </div>`;
+      document.getElementById('cancelDelete').onclick = () => { document.getElementById('dangerZoneConfirm').innerHTML = ''; };
+      document.getElementById('confirmDelete').onclick = guard(async () => {
+        const { error } = await sb.rpc('commissioner_delete_contest', { p_contest_id: currentContestId });
+        if(error){ showBanner(error.message); return; }
+        showBanner('Contest deleted.');
+        currentContestId = null; activeTab = 'hub';
+        await Promise.all([loadContests(), loadMyEntries()]);
+        render();
+      });
+    };
+  }
 }
 
 // ---------- INIT ----------
@@ -2190,3 +2295,4 @@ sb.auth.onAuthStateChange(async (event, s) => {
 </script>
 </body>
 </html>
+</content>
