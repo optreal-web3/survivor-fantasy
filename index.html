@@ -18,24 +18,11 @@
 <link rel="icon" type="image/png" href="images/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- Perf fix (2026-09-15): the Google Fonts stylesheet used to be a plain
-     render-blocking <link rel="stylesheet">, and the Supabase JS bundle used
-     to load via a synchronous <script src> sitting right here in <head>,
-     BEFORE the <style> block below. A synchronous head script blocks HTML
-     parsing entirely until it downloads, so nothing after it (not even the
-     inline <style> tag, let alone <body>) could be parsed or painted until
-     both that script and this font stylesheet had finished loading over the
-     network -- the browser just showed its default white background in the
-     meantime. Fixed two ways: (1) the font stylesheet now loads via the
-     standard non-blocking swap trick below (fetched with media="print" so it
-     doesn't block rendering, then flipped to media="all" once loaded --
-     "display=swap" in the URL means visible text uses the fallback font
-     immediately rather than staying invisible while it waits); (2) the
-     Supabase JS <script> tag was moved out of <head> entirely, down to just
-     above this file's own inline <script> at the end of <body> (see there) --
-     it still has to load before that inline script runs, but by then the
-     browser has already parsed and painted everything above it, including
-     the "Loading…" placeholder, instead of blocking on it in <head>. -->
+<!-- Font stylesheet loads non-blocking: fetched with media="print" (doesn't
+     block rendering) then flipped to media="all" once loaded; display=swap
+     shows the fallback font immediately instead of invisible text. The
+     Supabase JS bundle lives at the end of <body> instead of here, so
+     neither resource delays first paint. -->
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
@@ -188,13 +175,10 @@
   <div id="app"><div class="center">Loading…</div></div>
 </div>
 
-<!-- Perf fix (2026-09-15): moved down here from <head> -- see the comment
-     above the font-loading links for why. This still has to finish loading
-     before the inline app script right below it can run (that script's very
-     first executable line creates the Supabase client), but by this point
-     in the document the browser has already parsed and painted everything
-     above (including the "Loading…" placeholder), so this no longer blocks
-     first paint the way it did sitting in <head>. -->
+<!-- Lives at the end of <body>, not <head>, so it doesn't block first paint
+     of the "Loading…" placeholder above -- see the font-loading comment
+     near the top of <head>. The inline app script right below still waits
+     for this to load (its first line creates the Supabase client). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 const SUPABASE_URL = 'https://caehjxogikaekpcrxcoo.supabase.co';
@@ -209,11 +193,9 @@ let currentContestId = null, currentContest = null, currentEntry = null;
 let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
 // recentWeekNumbers: every week (ascending, oldest first) the player has picks in within this
 // contest whose real kickoff (weeks.closes_at) has already passed -- i.e. every week there's
-// actually something to recap yet. Added 2026-09-15 alongside the recap card's prev/next
-// arrows: previously the recap card just showed the single highest week_number the player had
-// ANY pick in, with no check that the week had even started -- so locking in next week's
-// lineup ahead of time immediately (and wrongly) flipped the card to "Week N+1 recap" showing
-// an unplayed lineup. recapWeekIndex pages through recentWeekNumbers, same convention as
+// actually something to recap. Gated on real kickoff (not just "has a pick") so locking in next
+// week's lineup ahead of time doesn't flip the card to a "Week N+1 recap" showing an unplayed
+// lineup. recapWeekIndex pages through recentWeekNumbers, same convention as
 // hsWeekIndex/displayWeekNumbers() below for the High Scores card. recentWeekNumber is just
 // recentWeekNumbers[recapWeekIndex], kept as its own variable since renderHome() and the
 // scoreboard's week badge read it directly.
@@ -251,14 +233,14 @@ function clearBanner(){ clearTimeout(bannerTimeout); bannerTimeout = null; banne
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
 
-// Currency helpers (added 2026-09-16): entry fees/prizes are always one of
-// Free, USDC, or DGEN -- no dollar signs anywhere. currencyForContest()
+// Currency helpers: entry fees/prizes are always one of Free, USDC, or
+// DGEN -- no dollar signs anywhere. currencyForContest()
 // resolves the label a given contest should show (is_free wins over
 // whatever's stored in contests.currency, since "free" isn't itself a
 // stored currency value); currencyPillHTML() renders the small colored
 // pill (green/free, bright neon blue/USDC, purple/DGEN); fmtAmt() is the
-// plain numeric formatter that replaced the old money() (no currency
-// symbol prefix -- the pill at the top of a page carries that now).
+// plain numeric formatter (no currency symbol prefix -- the pill at the
+// top of a page carries that instead).
 function currencyForContest(c){
   if(!c) return 'free';
   return c.is_free ? 'free' : (c.currency || 'usdc');
@@ -277,9 +259,9 @@ function fmtAmt(n){
 // tab just inherits the surrounding text color: grey when inactive, the
 // app's blue accent when active. Keeps the tab row in the app's own
 // palette instead of full-color emoji.
-// prizes (updated 2026-09-16): was a circle with a dollar sign -- now a
-// coin (the circle) with a small sparkle/gem mark in the middle, since
-// entry fees and prizes are denominated in USDC/DGEN, never dollars.
+// prizes: a coin (circle) with a small sparkle/gem mark in the middle --
+// not a dollar sign, since entry fees and prizes are denominated in
+// USDC/DGEN, never dollars.
 const ICON_PATHS = {
   home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.8"/><path d="M9.5 20v-6h5v6"/>',
   picks: '<g transform="rotate(-30 12 12)"><path d="M4 12c2-5 6-8 8-8s6 3 8 8c-2 5-6 8-8 8s-6-3-8-8Z"/><path d="M6.5 12h11"/><path d="M10 10.3v3.4"/><path d="M12 10v4"/><path d="M14 10.3v3.4"/></g>',
@@ -314,13 +296,11 @@ function secondChanceIconHTML(){
 // (where a fixed-opacity overlay has the least natural contrast) and back
 // down toward the extremes (near-black/near-white, where a light touch is
 // already plenty visible).
-// Floor raised 2026-09-14: several teams' primary_hex sits at a pure
-// extreme (#000000 for ATL/CAR/CIN/LV/PIT, a saturated low-luminance red
-// for KC), which drove distanceFromExtreme toward 0 and left the star
-// pattern rendering at (or near) the old 0.05 floor -- effectively
-// invisible against a same-color background. The floor/scale below were
-// raised so even the extreme-color case still shows a clearly visible,
-// still-subtle sparkle.
+// The floor/scale below are set so that even a team whose primary_hex sits
+// at a pure extreme (#000000 for ATL/CAR/CIN/LV/PIT, a saturated
+// low-luminance red for KC) still shows a clearly visible, still-subtle
+// sparkle, rather than one that rounds down to invisible against a
+// same-color background.
 function heroTextureDataURI(hex){
   const h = (hex || '').replace('#', '');
   const r = parseInt(h.substring(0, 2), 16) || 0;
@@ -341,12 +321,10 @@ function heroTextureDataURI(hex){
 // flair team, logo image or not. A right-justified, height-cropped logo
 // graphic is layered on top only when that team has a hero_logo_path set
 // (progressive enhancement -- optional, not required for the banner to
-// show). Fixed 2026-09-14: an earlier version of this function only
-// rendered anything at all when hero_logo_path was set, so clearing every
-// team's hero_logo_path (removing the real per-team logo images) also
-// blanked the entire banner -- color, stripe, and texture included. That
-// was never the intent (the user wanted only the PNG logos gone, not the
-// color/texture banner), so the logo image is now the only optional part.
+// show). The color/stripe/texture banner always renders regardless of
+// hero_logo_path -- the logo image is the only optional part of it, since
+// clearing a team's hero_logo_path should only remove that team's logo,
+// never the banner itself.
 // Lives in the fixed #heroBanner mount just above .wrap (outside its
 // 640px max-width), so it's full-bleed on desktop as well as mobile.
 // Called after profile loads/changes.
@@ -674,14 +652,9 @@ async function loadRecentWeek(){
 // in it, i.e. currently being played out / scored. Used by the Home "Weekly high scores" card
 // and Standings so they can show real-time/estimated numbers during the weekend instead of
 // waiting for the admin to finalize the week.
-// Perf note (2026-09-15): this used to find liveWeekNumber by looping over every open
-// (not-yet-finalized) week, newest-first, and awaiting one COUNT query per week until it found
-// one with picks in it. For a contest with several weeks scheduled out (normal once a season's
-// underway), that's a chain of sequential round trips to the DB before the loop ever reaches
-// the actual live week -- the biggest single contributor to the "Standings/Prizes/entering a
-// contest feels slow" delays. Replaced with one query that pulls week_number for every pick in
-// any open week at once, then picks the newest week_number that shows up -- same result, one
-// round trip no matter how many open weeks exist.
+// One query pulls week_number for every pick in any open week at once, then picks the newest
+// week_number that shows up -- avoids a sequential per-week COUNT query, which gets slow once
+// a contest has several weeks scheduled out.
 async function loadFinalizedWeeks(){
   const [{ data: finalizedRows }, { data: openRows }] = await Promise.all([
     sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', true).order('week_number'),
@@ -772,10 +745,9 @@ function weekTopPlayersListHTML(top5){
 }
 // Called once, right after entering (or creating, or re-entering) a
 // contest from the Hub -- loads everything renderHome/renderPicks/etc need.
-// Perf note (2026-09-15): loadCurrentContest/refreshCurrentEntry/loadCurrentWeek each only
-// depend on currentContestId/session (already set by the time this runs), not on each other's
-// results -- they used to run one after another for no reason, adding three sequential round
-// trips before the second batch could even start. Running them together cuts that to one.
+// loadCurrentContest/refreshCurrentEntry/loadCurrentWeek only depend on
+// currentContestId/session (already set by the time this runs), not on each
+// other's results, so they run together in one Promise.all round trip.
 async function loadContestData(){
   adminScoreWeek = null; // re-derive fresh (defaulting to the oldest unfinalized week) each time a contest is (re-)entered
   await Promise.all([loadCurrentContest(), refreshCurrentEntry(), loadCurrentWeek()]);
@@ -783,19 +755,14 @@ async function loadContestData(){
 }
 
 // ---------- AUTH ----------
-// Switched from clickable magic links to a typed one-time code (2026-09-14):
-// a magic link could be silently consumed by an email client's own "link
-// preview" prefetch before the player ever tapped it, which looked like a
-// dead/looping sign-in with no clear cause (see supabase-setup.md). A typed
-// code can't be prefetched -- nothing but the player ever "enters" it.
-// signInWithOtp itself is unchanged by this switch; only the Magic Link
-// email template (Supabase dashboard, not this file) and how we verify the
-// response differ. sendLoginCode also powers "Resend code" -- same call,
-// a fresh code each time.
-// Note: the code's actual digit count is set server-side (Supabase Auth ->
-// Email OTP length) and isn't hardcoded here -- this project has sent both
-// 6 and 8 digits at different times, so the UI below accepts a range
-// instead of assuming one exact length.
+// Sign-in is a typed one-time code, not a clickable magic link -- a magic
+// link can be silently consumed by an email client's own "link preview"
+// prefetch before the player taps it, which looks like a dead/looping
+// sign-in with no clear cause. A typed code can't be prefetched.
+// sendLoginCode also powers "Resend code" -- same call, a fresh code each
+// time. The code's digit count is set server-side (Supabase Auth -> Email
+// OTP length), not hardcoded here, so the UI below accepts a range of
+// lengths rather than assuming one exact length.
 async function sendLoginCode(email, displayName){
   const { error } = await sb.auth.signInWithOtp({
     email,
@@ -1292,10 +1259,9 @@ function renderContestShell(){
 
 // Accordion (same expand/collapse pattern as the FAQ tab and the Prizes
 // tab's "Weekly high score history") -- one row per position, collapsed by
-// default. Added 2026-09-15: this list only grows as the season goes on
-// (WR especially, with 3 slots/week), so an always-expanded list got long
-// fast; collapsing by position keeps the card short while still letting a
-// player open just the position they care about.
+// default. This list only grows as the season goes on (WR especially,
+// with 3 slots/week), so collapsing by position keeps the card short
+// while still letting a player open just the position they care about.
 function renderPickHistoryHTML(){
   const positions = ['QB','RB','WR','TE'];
   const grouped = {};
@@ -1330,9 +1296,9 @@ function wirePickHistoryAccordion(){
 // of whether a new week has opened). It never depends on currentWeek/
 // closes_at on its own, so it has nothing to "flip" out from under a
 // player -- the recap simply stays until a newer week's picks replace it.
-// Building this week's lineup, and this contest's pick history (moved here
-// 2026-09-15 so players can see who's already used on the same page where
-// they're picking), both live on the Picks tab (see renderPicks below).
+// Building this week's lineup, and this contest's pick history (so
+// players can see who's already used on the same page where they're
+// picking), both live on the Picks tab (see renderPicks below).
 async function renderHome(body){
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
@@ -1349,8 +1315,8 @@ async function renderHome(body){
         ${canJoin ? '<button id="joinFromHomeBtn" style="margin-top:10px;">Join this contest</button>' : ''}
       </div>`;
   } else if(!currentEntry.alive){
-    // Second-chance rebuy (added 2026-09-15): a player who's eliminated can
-    // self-serve request a rebuy for one week after their own elimination
+    // Second-chance rebuy: a player who's eliminated can self-serve request
+    // a rebuy for one week after their own elimination
     // (eliminated_week + 1), as long as that's still within
     // contests.second_chance_min_week -- see request_second_chance() for
     // the exact server-side rule this mirrors. The request just flags it
@@ -1414,13 +1380,11 @@ async function renderHome(body){
     const currentTotal = scoredCount > 0 ? recentWeekPicks.reduce((sum,p) => sum + (Number(p.score) || 0), 0) : null;
     const fullyScored = scoredCount === lineupSlots.length && lineupSlots.length > 0;
 
-    // Sync-cadence + last-updated note (2026-09-14): scores refresh on a
-    // 15-minute cron gated to each week's own real game window (see
-    // supabase-setup.md's "Automated scoring" section) -- this tells
-    // players when that window closes for THIS week (closes_at + the
+    // Scores refresh on a 15-minute cron gated to each week's own real game
+    // window (see survivor-fantasy-setup.md's automated-scoring notes). This
+    // tells players when that window closes for THIS week (closes_at + the
     // sync's 24h post-window buffer) and when a score here last changed,
-    // computed from whichever pick in this week has the newest
-    // score_updated_at (now exposed by picks_with_scores).
+    // from whichever pick has the newest score_updated_at (picks_with_scores).
     const syncWindowEndIso = recentWeekClosesAt ? new Date(new Date(recentWeekClosesAt).getTime() + 24*60*60*1000).toISOString() : null;
     const lastScoreUpdate = recentWeekPicks.reduce((max,p) => {
       if(!p.score_updated_at) return max;
@@ -1513,8 +1477,8 @@ async function renderHome(body){
 }
 
 // Weekly high-scores card, used on Contest Home with prev/next arrows
-// through every finalized week in this contest, PLUS (2026-09-15) the
-// live in-progress week if there is one -- scores update as
+// through every finalized week in this contest, plus the live
+// in-progress week if there is one -- scores update as
 // sync-player-stats runs every 15 minutes, tagged "Live" until the admin
 // finalizes that week. Scores live permanently on the finalized `picks`
 // rows (nothing ever deletes them), so this is just a read + client-side
@@ -1549,8 +1513,8 @@ function wireHighScoresCard(body){
   if(prev) prev.onclick = async () => { hsWeekIndex--; await renderHome(body); };
   if(next) next.onclick = async () => { hsWeekIndex++; await renderHome(body); };
 }
-// Recap card's own prev/next arrows (added 2026-09-15, same pattern as the High Scores
-// card above) -- pages recapWeekIndex back/forward through recentWeekNumbers and reloads,
+// Recap card's own prev/next arrows (same pattern as the High Scores card
+// above) -- pages recapWeekIndex back/forward through recentWeekNumbers and reloads,
 // rather than just re-rendering with cached data, since scores can still be live-updating
 // for the most recent played week.
 function wireRecapCard(body){
@@ -1717,14 +1681,11 @@ async function renderStandings(body){
   const isLive = liveWeekNumber !== null && !finalizedWeekNumbers.includes(liveWeekNumber);
   const rankWeeks = displayWeekNumbers();
 
-  // Caution window (added 2026-09-16): previously, anyone still alive got tagged CAUTION the
-  // instant ANY pick existed for the live week and their live-week total sat below threshold --
-  // which could paint someone caution-yellow all week long even right after their Thursday
-  // night starter cleared, well before the rest of their lineup had even kicked off. Per the
-  // user: this should read as plain ALIVE/ELIMINATED almost all the time, with CAUTION reserved
-  // for the real crunch window -- starting 1 hour before the week's last kickoff (in practice,
-  // Monday Night Football) and persisting only until the week is actually finalized, at which
-  // point the definitive alive/eliminated branch above takes over (green or red). This is still
+  // Caution window: a still-alive player reads as plain ALIVE, not CAUTION, almost all the
+  // time -- CAUTION is reserved for the real crunch window: starting 1 hour before the week's
+  // last kickoff (in practice, Monday Night Football) and persisting only until the week is
+  // actually finalized, at which point the definitive alive/eliminated branch above takes over
+  // (green or red). This is still
   // a check against THIS WEEK's own point threshold (contests.weekly_threshold, e.g. 100), never
   // a cumulative one -- survival has always been decided week by week, not by a running season
   // total, regardless of what week number it is.
@@ -1738,9 +1699,8 @@ async function renderStandings(body){
     if(lastKickoff) cautionWindowOpen = new Date() >= new Date(lastKickoff.getTime() - 60 * 60 * 1000);
   }
 
-  // Perf note (2026-09-15): entriesData and allPicks used to each be awaited one after another
-  // even though neither depends on the other or on the contest row fetched above -- fired
-  // together instead, same idea as loadContestData's fix.
+  // entriesData and allPicks don't depend on each other or on the contest row
+  // fetched above, so they're fired together in one Promise.all.
   const [{ data: entriesData }, { data: allPicks }] = await Promise.all([
     sb.from('contest_entries').select('profile_id, alive, eliminated_week, second_chance_used, profiles!inner(display_name)')
       .eq('contest_id', currentContestId).eq('is_approved', true),
@@ -1961,13 +1921,10 @@ async function renderAdmin(body){
     second_chance_requested_at: p.second_chance_requested_at, is_commissioner: p.is_commissioner
   })).sort((a,b) => a.display_name.localeCompare(b.display_name));
 
-  // Which week's score-entry grid to show. Fixed 2026-09-15: this used to always be just
-  // currentWeek (the open pick week) -- the instant the week rolled over (the moment the
-  // previous week's closes_at passed, regardless of whether it had been finalized yet), the
-  // previous week's players/scores disappeared from Admin entirely with no way to get back to
-  // them. Now every week this contest has actually reached (<= currentWeek, so no empty future
-  // weeks) is selectable via the pill row below, defaulting to the oldest still-unfinalized one
-  // (the one that actually needs attention) -- once it's finalized it rolls off that default and
+  // Which week's score-entry grid to show. Every week this contest has actually reached
+  // (<= currentWeek, so no empty future weeks) is selectable via the pill row below, defaulting
+  // to the oldest still-unfinalized one (the one that actually needs attention) -- once it's
+  // finalized it rolls off that default and
   // the next open week takes its place, per the reset of adminScoreWeek in the finalize handler
   // below. Already-finalized weeks stay reachable too, for fixing a mistake after the fact.
   const reachedWeeks = (contestWeekRows || []).filter(w => !currentWeek || w.week_number <= currentWeek.week_number);
@@ -2005,7 +1962,7 @@ async function renderAdmin(body){
     // `source` (added for automated scoring) distinguishes a score
     // sync-player-stats auto-filled from nflverse data ('computed', not yet
     // reviewed) from one the admin has actually looked at and set/edited
-    // ('manual') -- see supabase-setup.md's "Automated scoring" section.
+    // ('manual') -- see survivor-fantasy-setup.md's automated-scoring notes.
     const [{ data: picksForWeek }, { data: weekScores }] = await Promise.all([
       sb.from('picks').select('nfl_player_id, nfl_player_name, position, team, profiles(display_name)').eq('contest_id', currentContestId).eq('week_number', weekForScores),
       sb.from('week_player_scores').select('nfl_player_id, score, source').eq('week_number', weekForScores)
@@ -2045,11 +2002,11 @@ async function renderAdmin(body){
       </div>` : '<p>No picks submitted for this week yet.</p>';
   }
 
-  // Second-chance rebuy requests pending confirmation (added 2026-09-15):
-  // a player requests this themselves from their Contest Home tab; this
+  // Second-chance rebuy requests pending confirmation: a player requests
+  // this themselves from their Contest Home tab; this
   // card is the "notice" that surfaces it here so it isn't missed among
   // the rest of the player list. Confirming (below) calls the same
-  // commissioner_grant_second_chance RPC as always, which now also
+  // commissioner_grant_second_chance RPC as always, which also
   // requires this request to exist server-side.
   const pendingSecondChance = players.filter(p => p.second_chance_requested_at && !p.second_chance_used);
   const pendingSecondChanceHTML = pendingSecondChance.length ? `
@@ -2277,30 +2234,18 @@ async function renderAdmin(body){
 }
 
 // ---------- INIT ----------
-// Supabase's client re-fires onAuthStateChange for more than just a fresh
-// sign-in -- it also fires on background token refreshes, and notably when
-// a backgrounded tab regains focus or you switch back from another tab.
-// Tracking whose data is currently loaded lets us tell "this is genuinely a
-// new sign-in" apart from "same user, session object just got refreshed" --
-// only the former should reset the screen back to the Hub and reload
-// everything. Without this, switching tabs and coming back (or even just
-// leaving the tab in the background for a while) was kicking players back
-// to the Hub mid-session, no matter what screen or contest they were on.
+// Supabase's client re-fires onAuthStateChange for more than a fresh
+// sign-in -- also on background token refreshes and tab refocus. Tracking
+// which user's data is loaded (lastLoadedUserId) tells "genuinely a new
+// sign-in" apart from "same user, session object just refreshed" -- only
+// the former resets the screen back to the Hub and reloads everything.
 //
-// Perf fix (2026-09-15): this listener also used to react to the very
-// first, automatic "INITIAL_SESSION" event that Supabase's client fires
-// once immediately on subscribe, reflecting whatever session was already
-// restored from storage. That's the exact same case the init IIFE below
-// already handles with its own explicit getSession() call -- so on a
-// normal page load with an existing session, both this listener AND the
-// IIFE ended up calling loadAllData() (4 queries) and render() back to
-// back, roughly doubling the network work that has to finish before the
-// real Hub screen replaces the "Loading…" placeholder. The guard below
-// skips that redundant first firing; the IIFE remains the single place
-// that handles first load, including the signed-out ("show the auth
-// screen") case this listener was never responsible for anyway. Every
-// later, real auth change (actual sign-in, sign-out, token refresh) still
-// reaches this listener exactly as before.
+// The automatic INITIAL_SESSION event (fired once on subscribe, reflecting
+// whatever session was already restored from storage) is skipped here --
+// the init IIFE below already handles that case with its own getSession()
+// call, so both firing would double the network work before the Hub
+// screen replaces "Loading…". Every later, real auth change (sign-in,
+// sign-out, token refresh) still reaches this listener as normal.
 let lastLoadedUserId = null;
 sb.auth.onAuthStateChange(async (event, s) => {
   if(event === 'INITIAL_SESSION') return;
@@ -2322,12 +2267,6 @@ sb.auth.onAuthStateChange(async (event, s) => {
 });
 
 (async () => {
-  // Pre-OTP-switch (2026-09-14), this init block also parsed a possible
-  // #error=... redirect hash from Supabase's magic-link /verify endpoint.
-  // That's no longer reachable now that sign-in is a typed code verified
-  // via verifyOtp() -- there's no redirect step for Supabase to fail on.
-  // Any verification failure now comes back as a normal error from
-  // verifyOtp() itself, shown inline on the code-entry screen.
   const { data: { session: existing } } = await sb.auth.getSession();
   if(existing){
     session = existing;
