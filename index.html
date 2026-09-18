@@ -125,6 +125,15 @@
   .player-score-pickers{font-size:11.5px;color:var(--text-dim);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);line-height:1.4;}
   .scoreInput{width:64px;flex:0 0 auto;margin:0;padding:6px 8px;font-size:13px;text-align:right;}
   .est-pill{font-size:9.5px;padding:2px 7px;border-radius:5px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px;background:var(--pending-dim);color:var(--pending);border:1px solid var(--pending);flex:0 0 auto;}
+  /* Week-status pill (Contest Home's "Week N" heading): Live/Final, built on --caution/
+     --alive the same way the Standings status pills are, and deliberately NOT on --purple/
+     --pending -- those two are the only vars applyThemeAccent()/flair re-theming ever
+     touches, so building this on --caution/--alive keeps Live/Final's colors fixed
+     regardless of which flair team's accent is currently applied. */
+  .week-pill{font-size:10px;padding:2.5px 9px;border-radius:6px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;flex:0 0 auto;border:1px solid;margin-left:2px;}
+  .week-pill.live{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);animation:weekLiveGlow 2.4s ease-in-out infinite;}
+  .week-pill.final{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
+  @keyframes weekLiveGlow{ 0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0.35);} 50%{box-shadow:0 0 9px 2px rgba(251,191,36,0.5);} }
   .muted-link{background:none;border:none;color:var(--text-dim);font-size:13px;padding:6px 0;text-decoration:underline;cursor:pointer;width:auto;}
   .confirm-box{border-top:1px solid var(--border);margin-top:8px;padding-top:8px;}
   .faq-item{border-bottom:1px solid var(--border);padding:11px 0;}
@@ -195,13 +204,15 @@ let myEntries = {};         // contest_id -> this player's contest_entries row (
 let currentContestId = null, currentContest = null, currentEntry = null;
 let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
 // recentWeekNumbers: every week (ascending, oldest first) the player has picks in within this
-// contest whose real kickoff (weeks.closes_at) has already passed -- i.e. every week there's
-// actually something to recap. Gated on real kickoff (not just "has a pick") so locking in next
+// contest whose real FIRST kickoff has already passed -- i.e. every week there's actually
+// something live to show. Gated on first kickoff (not just "has a pick") so locking in next
 // week's lineup ahead of time doesn't flip the card to a "Week N+1 recap" showing an unplayed
-// lineup. recapWeekIndex pages through recentWeekNumbers, same convention as
-// hsWeekIndex/displayWeekNumbers() below for the High Scores card. recentWeekNumber is just
-// recentWeekNumbers[recapWeekIndex], kept as its own variable since renderHome() and the
-// scoreboard's week badge read it directly.
+// lineup. A week enters this list the moment its earliest game kicks off and stays shown --
+// tagged "Live" (same est-pill pattern as the High Scores card) until the admin finalizes it --
+// it does NOT wait for the whole week to close out the way it used to. recapWeekIndex pages
+// through recentWeekNumbers, same convention as hsWeekIndex/displayWeekNumbers() below for the
+// High Scores card. recentWeekNumber is just recentWeekNumbers[recapWeekIndex], kept as its own
+// variable since renderHome() and the scoreboard's week badge read it directly.
 let recentWeekNumbers = [], recapWeekIndex = -1, recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
 let weekGamesMap = {};
 let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in the CURRENT contest
@@ -527,7 +538,7 @@ function isSameDayCT(iso){ return ctDate(iso) === ctDate(new Date().toISOString(
 
 // DraftKings NFL Classic (full PPR) offensive scoring reference -- static
 // reference data (not pulled from the DB), shown as a collapsed accordion
-// under the Week recap's "Threshold to advance" line so players can check
+// under the Home tab's "Threshold to advance" line so players can check
 // exactly how their picks' points were calculated without leaving the
 // page. Mirrors the table on DraftKings' own NFL Classic contest rules
 // page (Offense section only, since this game only drafts QB/RB/WR/TE).
@@ -645,10 +656,13 @@ async function loadWeekGames(){
   (data||[]).forEach(g => weekGamesMap[g.team] = g.kickoff_at);
 }
 // Contest Home's "recap" needs every week the player has picks in *within this contest*
-// that has actually been PLAYED -- its real kickoff (weeks.closes_at) already passed --
-// independent of currentWeek. Gating on "has started", not just "has a pick", is what stops
-// the card from flipping to (and mislabeling as a "recap") a future week the moment the
-// player locks in a pick for it ahead of time -- see the note on recentWeekNumbers above.
+// that has actually STARTED -- its real FIRST kickoff already passed -- independent of
+// currentWeek. Gating on "has started", not just "has a pick", is what stops the card from
+// flipping to (and mislabeling as a "recap") a future week the moment the player locks in a
+// pick for it ahead of time -- see the note on recentWeekNumbers above. This is deliberately
+// the week's FIRST kickoff, not its last (weeks.closes_at) -- a week shows up here, tagged
+// "Live", the moment there's real live data to show, rather than waiting for the whole week
+// (through Monday night) to close out.
 // Populates recentWeekNumbers (every such week, ascending) and then loads the one the
 // prev/next arrows currently point at (recapWeekIndex, defaulting to the most recent).
 async function loadRecentWeek(){
@@ -661,12 +675,22 @@ async function loadRecentWeek(){
     return;
   }
   const pickedWeekNumbers = [...new Set(data.map(p => p.week_number))];
-  const { data: weekRows } = await sb.from('weeks').select('week_number, closes_at').in('week_number', pickedWeekNumbers);
+  const [{ data: weekRows }, { data: gameRows }] = await Promise.all([
+    sb.from('weeks').select('week_number, closes_at').in('week_number', pickedWeekNumbers),
+    sb.from('games').select('week_number, kickoff_at').in('week_number', pickedWeekNumbers)
+  ]);
   const closesAtByWeek = {};
   (weekRows || []).forEach(w => { closesAtByWeek[w.week_number] = w.closes_at; });
+  // Earliest kickoff per week -- this (not weeks.closes_at, which is the LAST game + 4h) is
+  // what decides whether a week has anything live to show yet.
+  const firstKickoffByWeek = {};
+  (gameRows || []).forEach(g => {
+    const t = new Date(g.kickoff_at);
+    if(!firstKickoffByWeek[g.week_number] || t < firstKickoffByWeek[g.week_number]) firstKickoffByWeek[g.week_number] = t;
+  });
   const now = new Date();
   recentWeekNumbers = pickedWeekNumbers
-    .filter(wk => closesAtByWeek[wk] && new Date(closesAtByWeek[wk]) <= now)
+    .filter(wk => firstKickoffByWeek[wk] && firstKickoffByWeek[wk] <= now)
     .sort((a,b) => a - b);
 
   if(!recentWeekNumbers.length){
@@ -1377,13 +1401,18 @@ function wirePickHistoryAccordion(){
 }
 
 // Contest Home is a status/profile view scoped to the current contest:
-// alive state and a recap of the most recently *played* week (independent
-// of whether a new week has opened). It never depends on currentWeek/
-// closes_at on its own, so it has nothing to "flip" out from under a
-// player -- the recap simply stays until a newer week's picks replace it.
-// Building this week's lineup, and this contest's pick history (so
-// players can see who's already used on the same page where they're
-// picking), both live on the Picks tab (see renderPicks below).
+// alive state and a "Week N" card for the most recently *started* week
+// (independent of whether a new week has opened). Deliberately not
+// labeled "recap" -- that word implied the week was over, which isn't
+// true the moment it first appears. Instead the heading always carries a
+// Live or Final pill (.week-pill, built on --caution/--alive so its color
+// never shifts with a player's flair accent -- see the CSS comment) that
+// says exactly what state the numbers below are in. A week shows up here
+// the moment its first game kicks off, tagged Live, and switches to
+// Final once the admin finalizes it -- see loadRecentWeek()'s comment for
+// the exact gating. Building this week's lineup, and this contest's pick
+// history (so players can see who's already used on the same page where
+// they're picking), both live on the Picks tab (see renderPicks below).
 async function renderHome(body){
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
@@ -1487,21 +1516,31 @@ async function renderHome(body){
     // both modes) still drives each slot's own row color either way.
     const totalColor = isEliminator ? 'var(--text)' : (currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)');
 
+    // Always shows one of the two -- Live (yellow, glowing, same as the Caution pill's
+    // color on Standings) or Final (green, same as the Alive pill) -- rather than only
+    // tagging the not-final case. That's what let "recap" drop from the heading entirely:
+    // the pill itself now says what state the week is in, so the heading doesn't need to
+    // imply anything about completeness on its own. Uses the dedicated .week-pill classes
+    // (not .est-pill) since this is a different, more prominent visual treatment than the
+    // small purple "Est." tags used elsewhere on this same card.
+    const weekStatusPill = isFinal
+      ? ' <span class="week-pill final" title="Finalized by the admin">Final</span>'
+      : ' <span class="week-pill live" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>';
+
     recapHTML = `
       <div class="card">
         <div class="row">
-          <h3>Week ${recentWeekNumber} recap</h3>
+          <h3>Week ${recentWeekNumber}${weekStatusPill}</h3>
           <span class="row" style="gap:6px;width:auto;">
             <button class="small secondary" id="recapPrev" ${recapWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
             <button class="small secondary" id="recapNext" ${recapWeekIndex >= recentWeekNumbers.length - 1 ? 'disabled' : ''}>›</button>
           </span>
         </div>
-        ${!isFinal ? '<p>Scoring in progress — the admin hasn\'t finalized this week yet.</p>' : ''}
         ${recapSlotsHTML}
         ${currentTotal !== null ? `
           <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
-          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — not final until the week is finalized.</p>` : ''}
-          ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
+          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
+        ` : ''}
         ${isEliminator
           ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
           : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
@@ -1613,7 +1652,7 @@ function wireHighScoresCard(body){
 // Recap card's own prev/next arrows (same pattern as the High Scores card
 // above) -- pages recapWeekIndex back/forward through recentWeekNumbers and reloads,
 // rather than just re-rendering with cached data, since scores can still be live-updating
-// for the most recent played week.
+// for the most recent started week.
 function wireRecapCard(body){
   const prev = document.getElementById('recapPrev'), next = document.getElementById('recapNext');
   if(prev) prev.onclick = guard(async () => { recapWeekIndex--; await loadRecentWeek(); await renderHome(body); });
