@@ -640,6 +640,11 @@ async function loadMyPicks(){
     .eq('contest_id', currentContestId).eq('player_id', session.user.id).eq('week_number', currentWeek.week_number);
   myPicks = data || [];
 }
+// Reflects whoever's CURRENTLY locked into a slot, not everyone ever
+// searched/picked -- submit_slot_pick overwrites a slot's row in place on
+// a swap, so a player abandoned before his kickoff drops out of this set
+// as soon as the swap lands (he was never really "used" -- see the
+// v_existing_id exclusion in submit_slot_pick's reuse check).
 async function loadUsedPlayers(){
   const { data } = await sb.from('picks').select('nfl_player_id').eq('contest_id', currentContestId).eq('player_id', session.user.id);
   usedPlayerIds = new Set((data||[]).map(p => p.nfl_player_id));
@@ -1370,6 +1375,10 @@ function renderContestShell(){
 // default. This list only grows as the season goes on (WR especially,
 // with 3 slots/week), so collapsing by position keeps the card short
 // while still letting a player open just the position they care about.
+// This reflects CURRENT locks, not a full log of every player ever
+// searched -- picks are editable up until kickoff (see submit_slot_pick),
+// so a player swapped away from before his kickoff simply isn't here
+// anymore, and never counted against season-long reuse in the first place.
 function renderPickHistoryHTML(){
   const positions = ['QB','RB','WR','TE'];
   const grouped = {};
@@ -1379,8 +1388,8 @@ function renderPickHistoryHTML(){
 
   return `
     <div class="card">
-      <h3>Your pick history in this contest</h3>
-      <p>Every player you've used in this contest.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : ' Once a player is on this list, they\'re locked out for the rest of the contest. (You can still use them in a different contest).'} Keep this as your own record in case a pick's ever in question.</p>
+      <h3>Your locked-in picks this contest</h3>
+      <p>Whoever's currently locked into each slot, week by week.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : ' Once a slot\'s player has kicked off, they\'re locked out for the rest of the contest — swapping away from someone before his kickoff doesn\'t count against you. (You can still use anyone here in a different contest).'} Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
           <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
@@ -1702,8 +1711,9 @@ async function renderPicks(body){
   const canPick = !!(currentEntry?.alive && currentEntry?.is_approved && windowOpen);
   // Eliminator's open-pool variant lets a player reuse the same NFL
   // player week to week -- usedPlayerIds (loaded from every pick this
-  // player's ever made in this contest) only gates the search results
-  // when that's off, so runSearch below needs to know which mode this is.
+  // player CURRENTLY has locked in this contest -- see loadUsedPlayers)
+  // only gates the search results when that's off, so runSearch below
+  // needs to know which mode this is.
   const reuseAllowed = contestRow && contestRow.unique_players_per_season === false;
 
   const slotsHTML = lineupSlots.map(slot => {
@@ -1715,6 +1725,24 @@ async function renderPicks(body){
       // "fail" red, which is what this used to do.
       const scoreColor = pick.result === 'pass' ? 'var(--alive)' : pick.result === 'fail' ? 'var(--elim)' : 'var(--text-dim)';
       const estTag = (pick.score !== null && pick.source === 'computed') ? ' <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn\'t reviewed it yet">Est.</span>' : '';
+      // A slot is still swappable up until the player CURRENTLY in it kicks
+      // off -- submit_slot_pick enforces this same gate server-side, this
+      // just decides whether to show the search box again or the final,
+      // scored version of the slot. Reuses the exact same .slotSearch input
+      // (and its shared debounce/runSearch wiring below) an empty slot
+      // uses, so swapping and first-time filling are the same code path.
+      const pickKickoff = weekGamesMap[pick.team] || null;
+      const editable = canPick && pickKickoff && new Date(pickKickoff).getTime() > Date.now();
+      if(editable){
+        return `
+          <div class="slot-card">
+            <div class="row"><span class="slot-label">${slot.slot}</span><span class="pill pending">EDITABLE</span></div>
+            <p style="color:var(--text);margin-top:4px;">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim)">(${esc(pick.team)})</span></p>
+            <p class="estimate-note">You can swap this pick until ${ctTime(pickKickoff)} — ${esc(pick.nfl_player_name)}'s kickoff.</p>
+            <input placeholder="Search ${slot.position} to swap..." class="slotSearch" data-slot="${slot.slot}" data-position="${slot.position}" autocomplete="off"/>
+            <div class="results" id="results-${slot.slot}"></div>
+          </div>`;
+      }
       return `
         <div class="slot-card">
           <div class="row"><span class="slot-label">${slot.slot}</span><span class="pill alive">LOCKED</span></div>
@@ -1748,7 +1776,7 @@ async function renderPicks(body){
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
-      <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
+      <div class="note">Each slot can be swapped as many times as you want, right up until whoever's currently in it kicks off — after that it locks for good. Slots are independent, so an early kickoff can lock one slot while the rest of your lineup stays open.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
       ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
       ${slotsHTML}
       ${isEliminator
@@ -1806,12 +1834,20 @@ async function runSearch(slot, position, query, reuseAllowed){
 
 function showPickConfirm(slot, id, name, team){
   const resultsEl = document.getElementById(`results-${slot}`);
+  // Wording branches on whether this slot already has a pick in it -- a
+  // fresh pick and a swap both end up calling the same submit_slot_pick
+  // RPC (it upserts either way), so the only thing that needs to differ
+  // is what the confirm copy tells the player to expect.
+  const isSwap = myPicks.some(p => p.slot === slot);
+  const promptHTML = isSwap
+    ? `Swap ${slot} to <strong>${esc(name)}</strong> (${esc(team)})? You can keep swapping this slot until ${esc(name)}'s own kickoff.`
+    : `Lock in <strong>${esc(name)}</strong> (${esc(team)}) for ${slot}? You can still swap this pick anytime before ${esc(name)}'s kickoff.`;
   resultsEl.innerHTML = `
     <div class="confirm-box">
-      <p style="color:var(--text);">Lock in <strong>${esc(name)}</strong> (${esc(team)}) for ${slot}? This can't be changed once submitted.</p>
+      <p style="color:var(--text);">${promptHTML}</p>
       <div class="row" style="gap:8px;margin-top:6px;">
         <button class="small secondary" id="cancelPick" style="flex:1;">Cancel</button>
-        <button class="small" id="confirmPick" style="flex:1;">Confirm pick</button>
+        <button class="small" id="confirmPick" style="flex:1;">${isSwap ? 'Confirm swap' : 'Confirm pick'}</button>
       </div>
     </div>`;
   document.getElementById('cancelPick').onclick = () => { resultsEl.innerHTML = ''; };
@@ -2016,7 +2052,7 @@ function faqItems(contest){
         ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain. If several players tie for the lowest score, your cumulative season total (not just that week) breaks the tie — the lower total is the one cut."
         : `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
-      a: "No. Locking a pick is permanent — there's no undo, for you or the admin — so double check before confirming." },
+      a: "Yes — you can swap any slot as many times as you want, right up until whoever's currently in it kicks off. Once his game starts, that slot locks for good and can't be changed by you or the admin. Slots lock independently, so an early kickoff can lock one slot while the rest of your lineup is still open. Swapping away from a player before his kickoff doesn't burn him for the rest of the contest — only whoever you actually end up locked in on gets counted." },
     { q: "What happens if I don't finish my full lineup before the week closes?",
       a: "An incomplete team (missing even one slot) is treated as an elimination, the same as a team that didn't clear the point threshold." },
     { q: "Can I use the same NFL player twice?",
