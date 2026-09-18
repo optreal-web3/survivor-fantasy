@@ -1614,11 +1614,13 @@ async function renderHome(body){
 
 // Weekly high-scores card, used on Contest Home with prev/next arrows
 // through every finalized week in this contest, plus the live
-// in-progress week if there is one -- scores update as
-// sync-player-stats runs every 15 minutes, tagged "Live" until the admin
-// finalizes that week. Scores live permanently on the finalized `picks`
-// rows (nothing ever deletes them), so this is just a read + client-side
-// sum -- no separate storage needed.
+// in-progress week if there is one -- scores update as sync-player-stats
+// runs every 15 minutes. No Live/Final pill of its own here -- the "Week
+// N" card directly above it already states that, so isLive only affects
+// which scores are pulled (getWeekTop5/getWeekTopPlayers), not the
+// heading. Scores live permanently on the finalized `picks` rows (nothing
+// ever deletes them), so this is just a read + client-side sum -- no
+// separate storage needed.
 async function renderHighScoresCardHTML(){
   const weeks = displayWeekNumbers();
   if(!weeks.length){
@@ -1628,11 +1630,10 @@ async function renderHighScoresCardHTML(){
   const wk = weeks[hsWeekIndex];
   const isLive = wk === liveWeekNumber && !finalizedWeekNumbers.includes(wk);
   const [top5, topPlayers] = await Promise.all([getWeekTop5(wk, isLive), getWeekTopPlayers(wk, isLive)]);
-  const liveTag = isLive ? ' <span class="est-pill" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>' : '';
   return `
     <div class="card">
       <div class="row">
-        <h3>Week ${wk} high scores${liveTag}</h3>
+        <h3>Week ${wk} high scores</h3>
         <span class="row" style="gap:6px;width:auto;">
           <button class="small secondary" id="hsPrev" ${hsWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
           <button class="small secondary" id="hsNext" ${hsWeekIndex >= weeks.length - 1 ? 'disabled' : ''}>›</button>
