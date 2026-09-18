@@ -213,7 +213,7 @@ let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in th
 // weekend instead of waiting until the admin finalizes the week.
 let liveWeekNumber = null;
 let hsWeekIndex = -1; // index into displayWeekNumbers() currently shown on the Contest Home high-scores slider
-const weekTop5Cache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,total}] array, memoized (finalized weeks only -- see getWeekTop5)
+const weekTop5Cache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,flair_team,total}] array, memoized (finalized weeks only -- see getWeekTop5)
 const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,position,team,score,pickers}] NFL-player array, memoized (finalized weeks only)
 // Which week's score-entry grid is currently shown on the Admin tab -- persists across
 // re-renders so it doesn't jump around while editing. Reset to null (re-derived fresh) whenever
@@ -303,6 +303,19 @@ function tabIcon(key){
 }
 
 function teamByCode(code){ return nflTeams.find(t => t.code === code) || null; }
+
+// Small team-flair pill (matches the "Playing as" header's own pill) --
+// shared by any place a *player's* chosen flair should render next to
+// their name: your own "Playing as" header, the Standings list, and the
+// Weekly high scores list. Returns '' when the player has no flair
+// chosen, or before nflTeams has loaded, so callers can splice it in
+// unconditionally.
+function flairPillHTML(code){
+  const team = code ? teamByCode(code) : null;
+  return team
+    ? `<span class="flair-pill" style="--tile-color:${team.secondary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>`
+    : '';
+}
 
 // Small "used their second-chance rebuy" badge -- shown next to a player's name on the
 // Standings board and (for housekeeping/consistency) the Admin tab's full player list. A pair
@@ -408,15 +421,11 @@ function applyThemeAccent(){
 // wherever this is used, rather than inline, so they aren't squeezed into
 // a narrow column.
 function playerNameHeaderHTML(){
-  const team = profile.flair_team ? teamByCode(profile.flair_team) : null;
-  const flairPill = team
-    ? `<span class="flair-pill" style="--tile-color:${team.secondary_hex};" title="${esc(team.name)}">${esc(team.code)}</span>`
-    : '';
   return `
     <div class="week-label">Playing as</div>
     <div class="name-row">
       <h2>${esc(profile.display_name)}</h2>
-      ${flairPill}
+      ${flairPillHTML(profile.flair_team)}
       <button class="icon-btn" id="editNameBtn" type="button" title="Edit display name" aria-label="Edit display name">${tabIcon('pencil')}</button>
       <button class="icon-btn" id="editFlairBtn" type="button" title="Pick your team flair" aria-label="Pick your team flair">${tabIcon('flair')}</button>
     </div>`;
@@ -478,7 +487,7 @@ function renderFlairPicker(area){
   area.innerHTML = `
     <div class="card">
       <h3>Pick your flair</h3>
-      <p>Shows a small tag next to your name and gives the app a subtle background tint in your team's colors — visible to other players.</p>
+      <p>Shows a small tag next to your name and gives the app a subtle background tint in your team's colors — visible to other players on the Standings list and the Weekly high scores card.</p>
       <div style="margin-top:10px;">${divisionsHTML || '<p>No teams loaded.</p>'}</div>
       <div class="row" style="gap:8px;margin-top:12px;">
         <button class="small secondary" id="flairClearBtn" style="flex:1;">No flair</button>
@@ -709,7 +718,7 @@ function displayWeekNumbers(){
 }
 // Shared by the Contest Home slider, Standings' "latest week" card, and the
 // Prizes weekly-history accordion -- one place that turns a week's picks
-// into a top-5 [{name,total}] list, memoized per contest+week since
+// into a top-5 [{name,flair_team,total}] list, memoized per contest+week since
 // finalized weeks never change once scored.
 // bypassCache: pass true for a week that's still live (scores change every ~15 min as
 // sync-player-stats runs) so a stale memoized value doesn't stick around across re-renders.
@@ -717,11 +726,11 @@ function displayWeekNumbers(){
 async function getWeekTop5(weekNumber, bypassCache){
   const cacheKey = `${currentContestId}:${weekNumber}`;
   if(!bypassCache && weekTop5Cache[cacheKey]) return weekTop5Cache[cacheKey];
-  const { data } = await sb.from('picks_with_scores').select('player_id, score, profiles(display_name)')
+  const { data } = await sb.from('picks_with_scores').select('player_id, score, profiles(display_name, flair_team)')
     .eq('contest_id', currentContestId).eq('week_number', weekNumber);
   const totals = {};
   (data || []).forEach(p => {
-    if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', total: 0 };
+    if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', flair_team: p.profiles?.flair_team || null, total: 0 };
     totals[p.player_id].total += Number(p.score) || 0;
   });
   const top5 = Object.values(totals).sort((a,b) => b.total - a.total).slice(0, 5);
@@ -729,7 +738,7 @@ async function getWeekTop5(weekNumber, bypassCache){
   return top5;
 }
 function weekTop5ListHTML(top5){
-  return top5.length ? top5.map((t,i) => `<div class="lb-row"><span>#${i+1} ${esc(t.name)}</span><b style="color:var(--purple);">${fmtPts(t.total)} pts</b></div>`).join('')
+  return top5.length ? top5.map((t,i) => `<div class="lb-row"><span>#${i+1} ${esc(t.name)}${t.flair_team ? ' ' + flairPillHTML(t.flair_team) : ''}</span><b style="color:var(--purple);">${fmtPts(t.total)} pts</b></div>`).join('')
     : '<p>No scores yet.</p>';
 }
 // Top 5 individual NFL players (not entrants) for a given week, by that
@@ -1809,7 +1818,7 @@ async function renderStandings(body){
   // entriesData and allPicks don't depend on each other or on the contest row
   // fetched above, so they're fired together in one Promise.all.
   const [{ data: entriesData }, { data: allPicks }] = await Promise.all([
-    sb.from('contest_entries').select('profile_id, alive, eliminated_week, second_chance_used, profiles!inner(display_name)')
+    sb.from('contest_entries').select('profile_id, alive, eliminated_week, second_chance_used, profiles!inner(display_name, flair_team)')
       .eq('contest_id', currentContestId).eq('is_approved', true),
     rankWeeks.length
       ? sb.from('picks_with_scores').select('player_id, week_number, score')
@@ -1843,13 +1852,13 @@ async function renderStandings(body){
     } else {
       statusClass = 'alive'; statusLabel = 'ALIVE';
     }
-    return { id: r.profile_id, display_name: r.profiles.display_name, alive: r.alive, eliminated_week: r.eliminated_week, second_chance_used: r.second_chance_used, total, statusClass, statusLabel };
+    return { id: r.profile_id, display_name: r.profiles.display_name, flair_team: r.profiles.flair_team, alive: r.alive, eliminated_week: r.eliminated_week, second_chance_used: r.second_chance_used, total, statusClass, statusLabel };
   }).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name));
 
   function survivorsRowsHTML(list){
     return list.map(r => `
       <div class="lb-row">
-        <span>${esc(r.display_name)}${r.second_chance_used ? ' ' + secondChanceIconHTML() : ''}</span>
+        <span>${esc(r.display_name)}${r.flair_team ? ' ' + flairPillHTML(r.flair_team) : ''}${r.second_chance_used ? ' ' + secondChanceIconHTML() : ''}</span>
         <span class="row" style="gap:8px;width:auto;">
           <b style="color:var(--purple);">${fmtPts(r.total)} pts</b>
           <span class="pill ${r.statusClass}">${r.statusLabel}</span>
