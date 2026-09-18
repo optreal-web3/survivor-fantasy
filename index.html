@@ -1908,8 +1908,8 @@ async function renderStandings(body){
 
   const liveNote = isLive ? `<p class="estimate-note">Week ${liveWeekNumber} is still in progress — totals update automatically as scores sync in.</p>` : '';
   const standingsDescription = isEliminator
-    ? 'Ranked by cumulative points. Each week, whoever has the lowest score(s) is cut — surviving is about not being at the bottom, not clearing a fixed number.'
-    : 'Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this contest format other than bragging rights.';
+    ? 'Ranked by cumulative points. Each week, whoever has the lowest score(s) is cut — surviving is about not being at the bottom, not clearing a fixed number. Total points also break ties on the cut line.'
+    : 'Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this Contest format (Survivor) other than bragging rights.';
 
   body.innerHTML = `
     <div class="card">
@@ -2013,7 +2013,7 @@ function faqItems(contest){
       a: "Survivor: your full team's combined score needs to clear a fixed weekly point threshold, or you're out. Eliminator: there's no fixed number — each week, whoever has the lowest score(s) is cut, with the pace worked out automatically so the contest always finishes with exactly one winner." },
     { q: isEliminator ? "What score do I need to survive each week?" : "What score do I need to survive each week?",
       a: isEliminator
-        ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain."
+        ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain. If several players tie for the lowest score, your cumulative season total (not just that week) breaks the tie — the lower total is the one cut."
         : `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
       a: "No. Locking a pick is permanent — there's no undo, for you or the admin — so double check before confirming." },
@@ -2028,7 +2028,9 @@ function faqItems(contest){
     { q: "How is the grand prize paid out?",
       a: "100% of the grand prize pool goes to whoever is still alive at the very end of that contest. If more than one player survives to the finish, it's split evenly between them." },
     { q: "How are weekly prizes decided?",
-      a: `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.` },
+      a: isEliminator
+        ? `Whoever has the single highest team score that week wins it — even if that score also happened to be low enough to get that player cut the same week. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.`
+        : `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.` },
     { q: "I got eliminated — is there any way back in?",
       a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. If you don't see that button, check with that contest's own admin." },
     { q: "Where can I see past weeks' high scores?",
