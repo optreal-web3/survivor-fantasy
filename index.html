@@ -62,7 +62,10 @@
   button:disabled{opacity:0.4;cursor:not-allowed;}
   button:active{transform:translateY(1px);}
   input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:8px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
+  select option:disabled{color:var(--text-dim);}
   label{font-size:12.5px;color:var(--text-dim);display:block;margin-top:11px;line-height:1.4;}
+  label.checkboxLabel{display:flex;align-items:center;gap:8px;margin-top:14px;}
+  label.checkboxLabel input[type=checkbox]{width:auto;margin-top:0;flex:0 0 auto;}
   .pill{font-size:10.5px;padding:4px 9px;border-radius:5px;font-weight:700;white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;border:1px solid transparent;}
   .pill.alive{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
   .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
@@ -253,6 +256,28 @@ function currencyPillHTML(currency){
 }
 function fmtAmt(n){
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+// Sport/game-mode helpers. SPORTS lists every sport the Create Contest
+// form can show, in display order; only 'nfl' has real roster/scoring
+// logic wired up (submit_slot_pick, the Picks tab's player search, and
+// DK scoring all assume NFL data) -- the others are shown greyed out and
+// unselectable in the dropdown so players can see what's coming without
+// being able to create a contest that can't actually be played yet.
+// GAME_TYPES is the two current modes; gameTypeLabel() is used anywhere a
+// contest's mode needs a short display name (Hub cards, Admin tab, etc).
+const SPORTS = [
+  { value: 'nfl', label: 'NFL', enabled: true },
+  { value: 'nba', label: 'NBA', enabled: false },
+  { value: 'mlb', label: 'MLB', enabled: false },
+  { value: 'mma', label: 'MMA', enabled: false }
+];
+const GAME_TYPES = [
+  { value: 'threshold_survivor', label: 'Survivor' },
+  { value: 'eliminator', label: 'Eliminator' }
+];
+function gameTypeLabel(gameType){
+  return GAME_TYPES.find(g => g.value === gameType)?.label || gameType;
 }
 
 // Monochrome tab icons -- plain line-art SVGs (no built-in color) so each
@@ -938,7 +963,7 @@ function contestCardHTML(c){
     <div class="lb-row" style="flex-wrap:wrap;">
       <span>
         <div style="color:var(--text);font-weight:700;">${esc(c.name)}${pendingApprovalPill}</div>
-        <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${esc(String(c.sport).toUpperCase())} · ${feeLabel} · ${statusLabel}</div>
+        <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${esc(String(c.sport).toUpperCase())} · ${esc(gameTypeLabel(c.game_type))} · ${feeLabel} · ${statusLabel}</div>
       </span>
       ${actionHTML}
     </div>`;
@@ -950,6 +975,19 @@ function renderCreateContestForm(area){
       <h3>New contest</h3>
       <label>Contest name (40 characters max)</label>
       <input id="cc_name" maxlength="40" placeholder="e.g. Week 3 Side Pool"/>
+      <label>Sport</label>
+      <select id="cc_sport">
+        ${SPORTS.map(s => `<option value="${s.value}" ${s.enabled ? '' : 'disabled'}>${esc(s.label)}${s.enabled ? '' : ' (coming soon)'}</option>`).join('')}
+      </select>
+      <label>Game mode</label>
+      <select id="cc_gameType">
+        ${GAME_TYPES.map(g => `<option value="${g.value}">${esc(g.label)}</option>`).join('')}
+      </select>
+      <div class="note" id="cc_gameTypeNote"></div>
+      <label class="checkboxLabel" id="cc_reuseWrap" style="display:none;">
+        <input id="cc_reuse" type="checkbox" checked/>
+        <span>Each NFL player can only be picked once for the whole contest (uncheck to allow reusing the same player week to week)</span>
+      </label>
       <label>Entry</label>
       <select id="cc_currency">
         <option value="free">Free to Play</option>
@@ -960,8 +998,18 @@ function renderCreateContestForm(area){
         <label id="cc_feeLabel">Entry fee</label>
         <input id="cc_fee" type="number" step="0.01" min="0" placeholder="e.g. 20"/>
       </div>
-      <label>Weekly point threshold to survive</label>
-      <input id="cc_threshold" type="number" value="100"/>
+      <label>Starts at week / Ends at week</label>
+      <div class="row">
+        <input id="cc_startWeek" type="number" min="1" max="18" value="1" style="width:auto;flex:1;min-width:0;" placeholder="Start wk"/>
+        <input id="cc_endWeek" type="number" min="1" max="18" value="18" style="width:auto;flex:1;min-width:0;" placeholder="End wk"/>
+      </div>
+      <div class="note">A contest doesn't have to run the whole season — e.g. start at week 8 and run through week 14 for a shorter side pool.</div>
+      <div id="cc_thresholdWrap">
+        <label>Weekly point threshold to survive</label>
+        <input id="cc_threshold" type="number" value="100"/>
+      </div>
+      <label>Second-chance rebuy window (weeks from this contest's own start; 0 = not offered)</label>
+      <input id="cc_scWeeks" type="number" min="0" value="0"/>
       <label>Signup closes at (optional)</label>
       <input id="cc_signup" type="datetime-local"/>
       <div class="note">Everything else uses this app's standard defaults, for now. Prize split, however, can be adjusted afterward from that contest's own Admin tab.</div>
@@ -975,22 +1023,49 @@ function renderCreateContestForm(area){
     document.getElementById('cc_feeWrap').style.display = val === 'free' ? 'none' : 'block';
     document.getElementById('cc_feeLabel').textContent = `Entry fee (${val.toUpperCase()})`;
   };
+  // Eliminator-only fields (player-reuse toggle) and Survivor-only fields
+  // (weekly threshold) show/hide based on the game-mode pick -- both are
+  // locked in at creation, so this is the only place either one is set.
+  const updateGameTypeFields = () => {
+    const gt = document.getElementById('cc_gameType').value;
+    const isEliminator = gt === 'eliminator';
+    document.getElementById('cc_reuseWrap').style.display = isEliminator ? 'flex' : 'none';
+    document.getElementById('cc_thresholdWrap').style.display = isEliminator ? 'none' : 'block';
+    document.getElementById('cc_gameTypeNote').textContent = isEliminator
+      ? 'Eliminator: no point threshold — each week, whoever has the lowest score(s) is cut. The cut pace is worked out automatically once signups close, based on how many weeks are left and how many players signed up, and always finishes with exactly one winner.'
+      : 'Survivor: clear the weekly point threshold to advance, or you\'re eliminated.';
+  };
+  document.getElementById('cc_gameType').onchange = updateGameTypeFields;
+  updateGameTypeFields();
   document.getElementById('cc_cancel').onclick = () => { area.innerHTML = ''; };
   document.getElementById('cc_create').onclick = guard(async () => {
     const name = document.getElementById('cc_name').value.trim();
     if(!name){ showBanner('Contest name is required.'); return; }
+    const sport = document.getElementById('cc_sport').value;
+    const gameType = document.getElementById('cc_gameType').value;
     const currencyVal = document.getElementById('cc_currency').value;
     const isFree = currencyVal === 'free';
     const fee = isFree ? null : (parseFloat(document.getElementById('cc_fee').value) || null);
     const threshold = parseFloat(document.getElementById('cc_threshold').value) || 100;
+    const startWeek = parseInt(document.getElementById('cc_startWeek').value) || 1;
+    const endWeek = parseInt(document.getElementById('cc_endWeek').value) || 18;
+    if(endWeek < startWeek){ showBanner('End week has to be the same as or after the start week.'); return; }
+    const scWeeks = parseInt(document.getElementById('cc_scWeeks').value) || 0;
+    const uniqueReuse = gameType === 'eliminator' ? document.getElementById('cc_reuse').checked : true;
     const signup = document.getElementById('cc_signup').value;
     const { data, error } = await sb.rpc('create_contest', {
       p_name: name,
+      p_sport: sport,
+      p_game_type: gameType,
       p_is_free: isFree,
       p_entry_fee: fee,
       p_weekly_threshold: threshold,
+      p_second_chance_window_weeks: scWeeks,
       p_signup_closes_at: signup ? new Date(signup).toISOString() : null,
-      p_currency: isFree ? 'usdc' : currencyVal
+      p_start_week: startWeek,
+      p_end_week: endWeek,
+      p_currency: isFree ? 'usdc' : currencyVal,
+      p_unique_players_per_season: uniqueReuse
     });
     if(error){ showBanner(error.message); return; }
     await Promise.all([loadContests(), loadMyEntries()]);
@@ -1267,11 +1342,12 @@ function renderPickHistoryHTML(){
   const grouped = {};
   positions.forEach(p => grouped[p] = []);
   myAllPicks.forEach(p => { if(grouped[p.position]) grouped[p.position].push(p); });
+  const reuseAllowed = currentContest && currentContest.unique_players_per_season === false;
 
   return `
     <div class="card">
       <h3>Your pick history in this contest</h3>
-      <p>Every player you've used in this contest. Once a player is on this list, they're locked out for the rest of the contest. (You can still use them in a different contests). Keep this as your own record in case a pick's ever in question.</p>
+      <p>Every player you've used in this contest.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : ' Once a player is on this list, they\'re locked out for the rest of the contest. (You can still use them in a different contest).'} Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
           <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
@@ -1303,6 +1379,7 @@ async function renderHome(body){
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
+  const isEliminator = contestRow?.game_type === 'eliminator';
 
   let statusHTML = '';
   if(!currentEntry){
@@ -1317,14 +1394,15 @@ async function renderHome(body){
   } else if(!currentEntry.alive){
     // Second-chance rebuy: a player who's eliminated can self-serve request
     // a rebuy for one week after their own elimination
-    // (eliminated_week + 1), as long as that's still within
-    // contests.second_chance_min_week -- see request_second_chance() for
-    // the exact server-side rule this mirrors. The request just flags it
-    // for the commissioner to confirm (Admin tab) once they've verified
-    // re-payment -- it doesn't reinstate the player on its own.
-    const scMinWeek = contestRow?.second_chance_min_week ?? 5;
+    // (eliminated_week + 1), as long as that's still within the contest's
+    // own second_chance_window_weeks (0 = not offered at all) -- see
+    // request_second_chance() for the exact server-side rule this
+    // mirrors. The request just flags it for the commissioner to confirm
+    // (Admin tab) once they've verified re-payment -- it doesn't
+    // reinstate the player on its own.
+    const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
     const scDeadlineWeek = currentEntry.eliminated_week + 1;
-    const scWindowOpen = !!currentWeek && currentEntry.eliminated_week <= scMinWeek && currentWeek.week_number <= scDeadlineWeek;
+    const scWindowOpen = scWindowWeeks > 0 && !!currentWeek && currentWeek.week_number <= scDeadlineWeek;
     if(currentEntry.second_chance_requested_at){
       statusHTML = `
         <div class="card">
@@ -1392,6 +1470,14 @@ async function renderHome(body){
       return (!max || t > max) ? t : max;
     }, null);
 
+    // Eliminator has no per-week point threshold -- whether that total was
+    // "good enough" depends on where it landed relative to everyone else
+    // that week, not a fixed number, so the total is shown in a neutral
+    // color there instead of the green/red threshold comparison Survivor
+    // uses. pick.result (pass/fail, set by commissioner_finalize_week for
+    // both modes) still drives each slot's own row color either way.
+    const totalColor = isEliminator ? 'var(--text)' : (currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)');
+
     recapHTML = `
       <div class="card">
         <div class="row">
@@ -1404,10 +1490,12 @@ async function renderHome(body){
         ${!isFinal ? '<p>Scoring in progress — the admin hasn\'t finalized this week yet.</p>' : ''}
         ${recapSlotsHTML}
         ${currentTotal !== null ? `
-          <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)'}">${fmtPts(currentTotal)} pts</b></div>
+          <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
           ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — not final until the week is finalized.</p>` : ''}
           ${!isFinal ? `<p class="estimate-note">Scores refresh automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.` : ''}</p>` : ''}
-        <div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
+        ${isEliminator
+          ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
+          : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
         ${dkScoringHTML('recap')}
       </div>`;
   }
@@ -1536,7 +1624,18 @@ async function renderPicks(body){
   }
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
+  // The Picks tab's player search and lineup slots are NFL-specific
+  // (nfl_players/games) -- every sport but NFL is still greyed out on the
+  // Create Contest form, so this shouldn't be reachable in practice, but
+  // it's a real gap if a non-NFL contest ever exists (e.g. seeded
+  // directly in the database), so it's guarded here rather than left to
+  // silently query the wrong data.
+  if(contestRow && contestRow.sport !== 'nfl'){
+    body.innerHTML = `<div class="card"><h3>Not available yet</h3><p>Lineup building for ${esc(String(contestRow.sport).toUpperCase())} contests isn't wired up yet — check back once it's supported.</p></div>`;
+    return;
+  }
   const threshold = contestRow?.weekly_threshold ?? 100;
+  const isEliminator = contestRow?.game_type === 'eliminator';
   const now = new Date();
   const windowOpen = now <= new Date(currentWeek.closes_at);
 
@@ -1552,6 +1651,11 @@ async function renderPicks(body){
   }
 
   const canPick = !!(currentEntry?.alive && currentEntry?.is_approved && windowOpen);
+  // Eliminator's open-pool variant lets a player reuse the same NFL
+  // player week to week -- usedPlayerIds (loaded from every pick this
+  // player's ever made in this contest) only gates the search results
+  // when that's off, so runSearch below needs to know which mode this is.
+  const reuseAllowed = contestRow && contestRow.unique_players_per_season === false;
 
   const slotsHTML = lineupSlots.map(slot => {
     const pick = myPicks.find(p => p.slot === slot.slot);
@@ -1583,6 +1687,7 @@ async function renderPicks(body){
   const totalScored = myPicks.length && myPicks.every(p => p.score !== null) && myPicks.length === lineupSlots.length
     ? myPicks.reduce((sum,p) => sum + Number(p.score), 0)
     : null;
+  const totalColor = isEliminator ? 'var(--text)' : (totalScored >= threshold ? 'var(--alive)' : 'var(--elim)');
 
   body.innerHTML = `
     <div class="scoreboard">
@@ -1594,11 +1699,13 @@ async function renderPicks(body){
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
-      <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.</div>
+      <div class="note">Once locked, a pick can't be changed. Slots lock independently — you can fill them one at a time up until your selected player's kickoff time.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
       ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
       ${slotsHTML}
-      <div class="stat" style="margin-top:10px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>
-      ${totalScored !== null ? `<div class="stat"><span>Your total this week</span><b style="color:${totalScored >= threshold ? 'var(--alive)' : 'var(--elim)'}">${fmtPts(totalScored)} pts</b></div>` : ''}
+      ${isEliminator
+        ? '<div class="stat" style="margin-top:10px;"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
+        : `<div class="stat" style="margin-top:10px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
+      ${totalScored !== null ? `<div class="stat"><span>Your total this week</span><b style="color:${totalColor}">${fmtPts(totalScored)} pts</b></div>` : ''}
       ${totalScored !== null && myPicks.some(p => p.source === 'computed') ? '<p class="estimate-note">Includes auto-filled ("Est.") score(s) not yet reviewed by the commissioner.</p>' : ''}
     </div>
     ${renderPickHistoryHTML()}
@@ -1608,7 +1715,7 @@ async function renderPicks(body){
     let debounce;
     input.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => runSearch(input.dataset.slot, input.dataset.position, input.value), 250);
+      debounce = setTimeout(() => runSearch(input.dataset.slot, input.dataset.position, input.value, reuseAllowed), 250);
     });
   });
   wireNameEdit(body);
@@ -1616,14 +1723,14 @@ async function renderPicks(body){
   wirePickHistoryAccordion();
 }
 
-async function runSearch(slot, position, query){
+async function runSearch(slot, position, query, reuseAllowed){
   const resultsEl = document.getElementById(`results-${slot}`);
   if(!query || query.length < 2){ resultsEl.innerHTML = ''; return; }
   const { data } = await sb.from('nfl_players').select('id, full_name, team')
     .eq('position', position).eq('active', true).ilike('full_name', `%${query}%`).limit(30);
   const now = Date.now();
   const options = (data || [])
-    .filter(p => !usedPlayerIds.has(p.id))
+    .filter(p => reuseAllowed || !usedPlayerIds.has(p.id))
     .map(p => ({ ...p, kickoff: weekGamesMap[p.team] || null }))
     .filter(p => p.kickoff && new Date(p.kickoff).getTime() > now)
     .sort((a,b) => a.full_name.localeCompare(b.full_name))
@@ -1675,6 +1782,7 @@ async function renderStandings(body){
   ]);
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
+  const isEliminator = contestRow?.game_type === 'eliminator';
   // The live in-progress week (if any) counts toward the ranking too, same
   // "push real-time scores" idea as the Home tab's high-scores card -- no
   // separate "Week N high scores" card here anymore, that lives on Home.
@@ -1685,12 +1793,11 @@ async function renderStandings(body){
   // time -- CAUTION is reserved for the real crunch window: starting 1 hour before the week's
   // last kickoff (in practice, Monday Night Football) and persisting only until the week is
   // actually finalized, at which point the definitive alive/eliminated branch above takes over
-  // (green or red). This is still
-  // a check against THIS WEEK's own point threshold (contests.weekly_threshold, e.g. 100), never
-  // a cumulative one -- survival has always been decided week by week, not by a running season
-  // total, regardless of what week number it is.
+  // (green or red). Only meaningful for Survivor's fixed weekly threshold -- Eliminator's "am I
+  // safe" question depends on the whole field's scores, not a number this client already has,
+  // so Eliminator skips the caution window entirely and just shows plain ALIVE until finalized.
   let cautionWindowOpen = false;
-  if(isLive){
+  if(isLive && !isEliminator){
     const { data: liveWeekGames } = await sb.from('games').select('kickoff_at').eq('week_number', liveWeekNumber);
     const lastKickoff = (liveWeekGames || []).reduce((max, g) => {
       const t = new Date(g.kickoff_at);
@@ -1751,11 +1858,14 @@ async function renderStandings(body){
   }
 
   const liveNote = isLive ? `<p class="estimate-note">Week ${liveWeekNumber} is still in progress — totals update automatically as scores sync in.</p>` : '';
+  const standingsDescription = isEliminator
+    ? 'Ranked by cumulative points. Each week, whoever has the lowest score(s) is cut — surviving is about not being at the bottom, not clearing a fixed number.'
+    : 'Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this contest format other than bragging rights.';
 
   body.innerHTML = `
     <div class="card">
       <h3>Standings</h3>
-      <p>Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this contest format other than bragging rights.</p>
+      <p>${standingsDescription}</p>
       ${liveNote}
       <input id="standingsSearch" placeholder="Search players..." style="margin-top:10px;"/>
       <div id="survivorsList" style="margin-top:6px;">${survivorsRowsHTML(rows)}</div>
@@ -1836,6 +1946,7 @@ async function renderPrizes(body){
 // change. Called with the current contest (for exact numbers) or null (at
 // the Hub level, before a specific contest is in view).
 function faqItems(contest){
+  const isEliminator = contest?.game_type === 'eliminator';
   const thresholdLine = contest ? `${contest.weekly_threshold}+ points` : "each contest's own posted threshold";
   const weeklyPrizeEnd = contest ? (contest.weekly_prize_end_week || 10) : 10;
   return [
@@ -1849,14 +1960,18 @@ function faqItems(contest){
       a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
     { q: "Can I join more than one contest at once?",
       a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
-    { q: "What score do I need to survive each week?",
-      a: `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
+    { q: "What's the difference between Survivor and Eliminator?",
+      a: "Survivor: your full team's combined score needs to clear a fixed weekly point threshold, or you're out. Eliminator: there's no fixed number — each week, whoever has the lowest score(s) is cut, with the pace worked out automatically so the contest always finishes with exactly one winner." },
+    { q: isEliminator ? "What score do I need to survive each week?" : "What score do I need to survive each week?",
+      a: isEliminator
+        ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain."
+        : `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
       a: "No. Locking a pick is permanent — there's no undo, for you or the admin — so double check before confirming." },
     { q: "What happens if I don't finish my full lineup before the week closes?",
       a: "An incomplete team (missing even one slot) is treated as an elimination, the same as a team that didn't clear the point threshold." },
     { q: "Can I use the same NFL player twice?",
-      a: "No — once you've used a player in a contest, they're off-limits for the rest of that contest's season. The same player can still be used in a different contest you've joined." },
+      a: "Depends on the contest — check its Picks tab. Most contests only let you use a player once for the whole contest; some Eliminator contests allow reusing the same player week to week instead. Either way, the same player can still be used in a different contest you've joined." },
     { q: "What if my chosen player's game already started?",
       a: "You can't pick them. The search only shows players whose game hasn't kicked off yet, and bye-week teams are excluded automatically." },
     { q: "What if an NFL game gets cancelled or postponed?",
@@ -1915,6 +2030,7 @@ async function renderAdmin(body){
     sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number')
   ]);
   currentContest = contestRow;
+  const isEliminator = contestRow.game_type === 'eliminator';
   const players = (entryRows || []).map(p => ({
     id: p.profile_id, display_name: p.profiles.display_name, is_approved: p.is_approved,
     alive: p.alive, eliminated_week: p.eliminated_week, second_chance_used: p.second_chance_used,
@@ -2025,6 +2141,7 @@ async function renderAdmin(body){
   body.innerHTML = `
     <div class="card">
       <h3>Contest settings</h3>
+      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''} — sport, game mode, weeks, and player-reuse are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
       <div class="row">
         <div style="flex:1;min-width:0;">
           <label>Signup closes at</label>
@@ -2038,11 +2155,15 @@ async function renderAdmin(body){
           </select>
         </div>
       </div>
+      ${isEliminator ? '' : `
       <label>Weekly point threshold / Weekly prizes through week</label>
       <div class="row">
         <input id="s_threshold" type="number" value="${contestRow.weekly_threshold}" style="width:auto;flex:1;min-width:0;" placeholder="Threshold"/>
         <input id="s_wpew" type="number" value="${contestRow.weekly_prize_end_week ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Through wk"/>
-      </div>
+      </div>`}
+      ${isEliminator ? `
+      <label>Weekly prizes through week</label>
+      <input id="s_wpew" type="number" value="${contestRow.weekly_prize_end_week ?? ''}" placeholder="Through wk"/>` : ''}
       <label>Entry fee / Grand % / Weekly % / Organizer %</label>
       <div class="row">
         <input id="s_fee" type="number" step="0.01" value="${contestRow.entry_fee ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Fee"/>
@@ -2094,6 +2215,7 @@ async function renderAdmin(body){
       ${scoresTableHTML}
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
+      ${isEliminator ? '<p class="estimate-note">Eliminator: finalizing works out how many to cut this week automatically (based on who\'s still alive and how many weeks remain) and cuts whoever has the lowest score(s), breaking ties by cumulative season points.</p>' : ''}
       <div id="finalizeConfirm"></div>
     </div>
 
@@ -2123,7 +2245,9 @@ async function renderAdmin(body){
 
   document.getElementById('saveSettings').onclick = guard(async () => {
     const signup = document.getElementById('s_signup').value;
-    await sb.rpc('commissioner_update_weekly_threshold', { p_contest_id: currentContestId, p_threshold: parseFloat(document.getElementById('s_threshold').value) });
+    if(!isEliminator){
+      await sb.rpc('commissioner_update_weekly_threshold', { p_contest_id: currentContestId, p_threshold: parseFloat(document.getElementById('s_threshold').value) });
+    }
     await sb.rpc('commissioner_set_signup_deadline', { p_contest_id: currentContestId, p_deadline: signup ? new Date(signup).toISOString() : null });
     await sb.rpc('commissioner_update_currency', { p_contest_id: currentContestId, p_currency: document.getElementById('s_currency').value });
     await sb.rpc('commissioner_update_prize_settings', {
@@ -2184,7 +2308,7 @@ async function renderAdmin(body){
     finalizeBtn.onclick = () => {
       document.getElementById('finalizeConfirm').innerHTML = `
         <div class="confirm-box">
-          <p style="color:var(--text);">Finalize week ${weekForScores}? This eliminates anyone below threshold or with an incomplete team.</p>
+          <p style="color:var(--text);">Finalize week ${weekForScores}? ${isEliminator ? 'This cuts whoever has the lowest score(s) this week, or anyone with an incomplete team.' : 'This eliminates anyone below threshold or with an incomplete team.'}</p>
           <div class="row" style="gap:8px;margin-top:6px;">
             <button class="small secondary" id="cancelFinalize" style="flex:1;">Cancel</button>
             <button class="small danger" id="confirmFinalize" style="flex:1;">Confirm finalize</button>
