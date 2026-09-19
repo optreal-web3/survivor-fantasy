@@ -1,8 +1,10 @@
 name: Supabase Backup
 
 # Nightly-ish safety net for the survivor-fantasy database. Dumps the
-# public schema (profiles, picks, weeks, league_settings, games,
-# nfl_players, lineup_slots) and saves it as a workflow artifact.
+# entire public schema (profiles, contests, contest_entries, contest_weeks,
+# weeks, games, nfl_players, nfl_teams, picks, week_player_scores) and
+# saves it as a workflow artifact. No --table filters are used, so a new
+# table added later is picked up automatically without editing this file.
 # Does NOT touch auth.users, RLS, functions, cron jobs, or the app itself --
 # this only opens a read connection to Postgres via a connection string.
 
