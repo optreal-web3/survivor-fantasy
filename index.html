@@ -1741,6 +1741,7 @@ async function renderPicks(body){
             <p class="estimate-note">You can swap this pick until ${ctTime(pickKickoff)} — ${esc(pick.nfl_player_name)}'s kickoff.</p>
             <input placeholder="Search ${slot.position} to swap..." class="slotSearch" data-slot="${slot.slot}" data-position="${slot.position}" autocomplete="off"/>
             <div class="results" id="results-${slot.slot}"></div>
+            <button class="small secondary clearSlotBtn" data-slot="${esc(slot.slot)}" data-name="${esc(pick.nfl_player_name)}" style="margin-top:8px;width:100%;">Clear this pick</button>
           </div>`;
       }
       return `
@@ -1776,8 +1777,10 @@ async function renderPicks(body){
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
-      <div class="note">Each slot can be swapped as many times as you want, right up until whoever's currently in it kicks off — after that it locks for good. Slots are independent, so an early kickoff can lock one slot while the rest of your lineup stays open.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
-      ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team locked in</span>' : ''}
+      <div class="note">Each slot can be swapped — or cleared back to empty — as many times as you want, right up until whoever's currently in it kicks off — after that it locks for good. Slots are independent, so an early kickoff can lock one slot while the rest of your lineup stays open.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
+      ${lineupSlots.length > 0 ? (myPicks.length === lineupSlots.length
+        ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team Roster Complete</span>'
+        : '<span class="pill caution" style="margin-top:6px;display:inline-block;">Team Roster Incomplete</span>') : ''}
       ${slotsHTML}
       ${isEliminator
         ? '<div class="stat" style="margin-top:10px;"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
@@ -1794,6 +1797,9 @@ async function renderPicks(body){
       clearTimeout(debounce);
       debounce = setTimeout(() => runSearch(input.dataset.slot, input.dataset.position, input.value, reuseAllowed), 250);
     });
+  });
+  document.querySelectorAll('.clearSlotBtn').forEach(btn => {
+    btn.onclick = () => showClearConfirm(btn.dataset.slot, btn.dataset.name);
   });
   wireNameEdit(body);
   wireFlairPicker(body);
@@ -1853,6 +1859,31 @@ function showPickConfirm(slot, id, name, team){
   document.getElementById('cancelPick').onclick = () => { resultsEl.innerHTML = ''; };
   document.getElementById('confirmPick').onclick = guard(async () => {
     const { error } = await sb.rpc('submit_slot_pick', { p_contest_id: currentContestId, p_week: currentWeek.week_number, p_slot: slot, p_player_ref: id });
+    if(error){ showBanner(error.message); return; }
+    await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadRecentWeek()]);
+    render();
+  });
+}
+
+// Clearing is a swap to nothing -- same shared results box, same
+// confirm/cancel pattern, same reload sequence as showPickConfirm above,
+// just calling clear_slot_pick (a plain delete, server-gated on the same
+// before-kickoff check submit_slot_pick uses) instead of submitting a
+// replacement. Lets a player back out of a pick (e.g. a late scratch) and
+// leave the slot open until they've decided who to fill it with.
+function showClearConfirm(slot, name){
+  const resultsEl = document.getElementById(`results-${slot}`);
+  resultsEl.innerHTML = `
+    <div class="confirm-box">
+      <p style="color:var(--text);">Clear <strong>${esc(name)}</strong> from ${slot}? The slot goes back to empty — search and lock in someone new whenever you're ready, right up until their kickoff.</p>
+      <div class="row" style="gap:8px;margin-top:6px;">
+        <button class="small secondary" id="cancelClear" style="flex:1;">Cancel</button>
+        <button class="small" id="confirmClear" style="flex:1;">Confirm clear</button>
+      </div>
+    </div>`;
+  document.getElementById('cancelClear').onclick = () => { resultsEl.innerHTML = ''; };
+  document.getElementById('confirmClear').onclick = guard(async () => {
+    const { error } = await sb.rpc('clear_slot_pick', { p_contest_id: currentContestId, p_week: currentWeek.week_number, p_slot: slot });
     if(error){ showBanner(error.message); return; }
     await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadRecentWeek()]);
     render();
@@ -2052,7 +2083,7 @@ function faqItems(contest){
         ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain. If several players tie for the lowest score, your cumulative season total (not just that week) breaks the tie — the lower total is the one cut."
         : `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
     { q: "Can I change a pick after I lock it in?",
-      a: "Yes — you can swap any slot as many times as you want, right up until whoever's currently in it kicks off. Once his game starts, that slot locks for good and can't be changed by you or the admin. Slots lock independently, so an early kickoff can lock one slot while the rest of your lineup is still open. Swapping away from a player before his kickoff doesn't burn him for the rest of the contest — only whoever you actually end up locked in on gets counted." },
+      a: "Yes — you can swap any slot as many times as you want, right up until whoever's currently in it kicks off. You can also clear a slot back to empty (a \"Clear this pick\" button sits under any editable slot) if you're not sure who to swap in yet — it'll just show as incomplete until you fill it. Once a slot's player has kicked off, that slot locks for good and can't be changed by you or the admin. Slots lock independently, so an early kickoff can lock one slot while the rest of your lineup is still open. Swapping or clearing away from a player before his kickoff doesn't burn him for the rest of the contest — only whoever you actually end up locked in on gets counted." },
     { q: "What happens if I don't finish my full lineup before the week closes?",
       a: "An incomplete team (missing even one slot) is treated as an elimination, the same as a team that didn't clear the point threshold." },
     { q: "Can I use the same NFL player twice?",
