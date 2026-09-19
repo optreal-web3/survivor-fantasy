@@ -146,7 +146,7 @@
   .faq-a.open{display:block;}
   .gm-row{display:flex;gap:12px;align-items:flex-start;margin-top:12px;}
   .gm-row:first-child{margin-top:0;}
-  .gm-icon-placeholder{width:100px;height:100px;flex:0 0 100px;border:1.5px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);line-height:1.4;padding:6px;}
+  .gm-icon{width:100px;height:100px;flex:0 0 100px;border:1px solid var(--border);border-radius:10px;object-fit:cover;display:block;}
   .history-text{color:var(--text);line-height:1.9;}
   .history-sep{color:var(--purple);margin:0 2px;}
   .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
@@ -295,14 +295,14 @@ const SPORTS = [
 // card; reminder is the short line shown under the Create Contest form's
 // own game-mode dropdown -- kept separate so the Hub carries the full
 // explanation while the form just jogs the memory of someone who's already
-// read it. imgSlug names the artwork file this mode will use once real art
-// exists (images/mode-<imgSlug>.png) -- gameModesCardHTML() currently
-// renders a placeholder box instead of an <img> for either mode.
+// read it. img is the path to this mode's Hub artwork (rendered by
+// gameModesCardHTML() as a 100x100 <img>); kept as a full path rather than
+// a filename stem since the two modes' art isn't in the same format.
 const GAME_TYPES = [
-  { value: 'threshold_survivor', label: 'Kingmaker Gauntlet', imgSlug: 'kingmaker',
+  { value: 'threshold_survivor', label: 'Kingmaker Gauntlet', img: 'images/mode-kingmaker.png',
     hubBlurb: "No cumulative score to hide behind — the realm judges you fresh each week. Clear the weekly threshold (100 points by default, set by the commissioner) or you're banished from the kingdom. There's no rival to outduel here, just the bar itself: every degen who clears it survives together, however many that turns out to be.",
     reminder: "Clear the weekly threshold or face banishment." },
-  { value: 'eliminator', label: 'KnightFall Guillotine', imgSlug: 'knightfall',
+  { value: 'eliminator', label: 'KnightFall Guillotine', img: 'images/mode-knightfall.jpg',
     hubBlurb: "No threshold to hide behind — just don't be the one caught at the bottom of the pile. Every week, the lowest scorer(s) meet the blade. The executioner's pace is calculated automatically from how many are still standing and how many weeks remain, so the field is always carved down to exactly one sovereign by the end. Unlike the Gauntlet, this is a straight duel against the whole pool — outscore them, not a number.",
     reminder: "Lowest score meets the blade — survive to rule alone." }
 ];
@@ -1066,7 +1066,7 @@ function gameModesCardHTML(){
       <div class="faq-a ${open ? 'open' : ''}" id="gmBody">
         ${GAME_TYPES.map(g => `
           <div class="gm-row">
-            <div class="gm-icon-placeholder" title="Artwork coming soon">Art<br>coming<br>soon</div>
+            <img class="gm-icon" src="${g.img}" alt="${esc(g.label)} artwork" loading="lazy">
             <div style="min-width:0;">
               <div style="color:var(--text);font-weight:700;">${esc(g.label)}</div>
               <p style="margin-top:4px;">${esc(g.hubBlurb)}</p>
