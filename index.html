@@ -58,6 +58,7 @@
   button{font-family:'Inter',sans-serif;font-weight:700;font-size:14.5px;background:var(--purple);color:var(--accent-ink);border:none;border-radius:8px;padding:12px 14px;cursor:pointer;width:100%;touch-action:manipulation;}
   button.secondary{background:transparent;color:var(--text);border:1px solid var(--border);}
   button.danger{background:var(--elim);color:#1a0505;}
+  button.warn{background:var(--caution-dim);color:var(--caution);border:1px solid var(--caution);}
   button.small{width:auto;padding:10px 12px;font-size:13px;}
   button:disabled{opacity:0.4;cursor:not-allowed;}
   button:active{transform:translateY(1px);}
@@ -216,8 +217,8 @@ let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPla
 let recentWeekNumbers = [], recapWeekIndex = -1, recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
 let weekGamesMap = {};
 let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in the CURRENT contest
-// The most recent NOT-yet-finalized week (contest-wide, not player-specific) that already has
-// at least one pick in it -- i.e. the week currently being played out / scored live, if any.
+// The most recent NOT-yet-finalized week (contest-wide, not player-specific) whose real FIRST
+// kickoff has already passed -- i.e. the week currently being played out / scored live, if any.
 // null when there's no such week (e.g. the open week hasn't kicked off yet, or every reached
 // week is already finalized). Set by loadFinalizedWeeks(). Lets the Home "Weekly high scores"
 // card and the Standings "high scores" card show real-time/estimated scores during the
@@ -277,6 +278,10 @@ function fmtAmt(n){
 // being able to create a contest that can't actually be played yet.
 // GAME_TYPES is the two current modes; gameTypeLabel() is used anywhere a
 // contest's mode needs a short display name (Hub cards, Admin tab, etc).
+// Display names are branded -- Kingmaker Gauntlet (threshold_survivor) and
+// KnightFall Guillotine (eliminator) -- while game_type values, function
+// names, and code comments keep the original survivor/eliminator
+// terminology throughout the codebase; only what players SEE changed.
 const SPORTS = [
   { value: 'nfl', label: 'NFL', enabled: true },
   { value: 'nba', label: 'NBA', enabled: false },
@@ -284,8 +289,8 @@ const SPORTS = [
   { value: 'mma', label: 'MMA', enabled: false }
 ];
 const GAME_TYPES = [
-  { value: 'threshold_survivor', label: 'Survivor' },
-  { value: 'eliminator', label: 'Eliminator' }
+  { value: 'threshold_survivor', label: 'Kingmaker Gauntlet' },
+  { value: 'eliminator', label: 'KnightFall Guillotine' }
 ];
 function gameTypeLabel(gameType){
   return GAME_TYPES.find(g => g.value === gameType)?.label || gameType;
@@ -711,13 +716,16 @@ async function loadRecentWeek(){
   recentWeekRow = cwRow;
   recentWeekClosesAt = closesAtByWeek[recentWeekNumber] || null;
 }
-// Which week (if any) is "live" -- open (not yet finalized) but already has at least one pick
-// in it, i.e. currently being played out / scored. Used by the Home "Weekly high scores" card
-// and Standings so they can show real-time/estimated numbers during the weekend instead of
-// waiting for the admin to finalize the week.
-// One query pulls week_number for every pick in any open week at once, then picks the newest
-// week_number that shows up -- avoids a sequential per-week COUNT query, which gets slow once
-// a contest has several weeks scheduled out.
+// Which week (if any) is "live" -- open (not yet finalized) but its real FIRST kickoff has
+// already passed, i.e. currently being played out / scored. Used by the Home "Weekly high
+// scores" card and Standings so they can show real-time/estimated numbers during the weekend
+// instead of waiting for the admin to finalize the week. Gated on real kickoff time rather than
+// "has at least one pick" -- a pick can exist for a week that hasn't started at all (e.g. a
+// player locking in next week's lineup early), which used to flip this on too soon. Same fix
+// as loadRecentWeek()'s first-kickoff gate above.
+// One query pulls kickoff times for every game in any open week at once, then picks the newest
+// week_number whose first kickoff has passed -- avoids a sequential per-week query, which gets
+// slow once a contest has several weeks scheduled out.
 async function loadFinalizedWeeks(){
   const [{ data: finalizedRows }, { data: openRows }] = await Promise.all([
     sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).eq('is_finalized', true).order('week_number'),
@@ -727,10 +735,15 @@ async function loadFinalizedWeeks(){
   const openWeekNumbers = (openRows || []).map(w => w.week_number); // already newest-first
   liveWeekNumber = null;
   if(openWeekNumbers.length){
-    const { data: picksInOpenWeeks } = await sb.from('picks').select('week_number')
-      .eq('contest_id', currentContestId).in('week_number', openWeekNumbers);
-    const weeksWithPicks = new Set((picksInOpenWeeks || []).map(p => p.week_number));
-    liveWeekNumber = openWeekNumbers.find(w => weeksWithPicks.has(w)) ?? null;
+    const { data: gamesInOpenWeeks } = await sb.from('games').select('week_number, kickoff_at')
+      .in('week_number', openWeekNumbers);
+    const firstKickoffByWeek = {};
+    (gamesInOpenWeeks || []).forEach(g => {
+      const t = new Date(g.kickoff_at);
+      if(!firstKickoffByWeek[g.week_number] || t < firstKickoffByWeek[g.week_number]) firstKickoffByWeek[g.week_number] = t;
+    });
+    const now = new Date();
+    liveWeekNumber = openWeekNumbers.find(w => firstKickoffByWeek[w] && firstKickoffByWeek[w] <= now) ?? null;
   }
   // Default the slider to the most recent displayable week (the live one if there is one,
   // otherwise the most recent finalized week); keep the current position if it's still valid
@@ -1064,14 +1077,16 @@ function renderCreateContestForm(area){
   // Eliminator-only fields (player-reuse toggle) and Survivor-only fields
   // (weekly threshold) show/hide based on the game-mode pick -- both are
   // locked in at creation, so this is the only place either one is set.
+  // (isEliminator/isEliminator-named fields keep the original code
+  // terminology; only the copy shown to players uses the branded names.)
   const updateGameTypeFields = () => {
     const gt = document.getElementById('cc_gameType').value;
     const isEliminator = gt === 'eliminator';
     document.getElementById('cc_reuseWrap').style.display = isEliminator ? 'flex' : 'none';
     document.getElementById('cc_thresholdWrap').style.display = isEliminator ? 'none' : 'block';
     document.getElementById('cc_gameTypeNote').textContent = isEliminator
-      ? 'Eliminator: no point threshold — each week, whoever has the lowest score(s) is cut. The cut pace is worked out automatically once signups close, based on how many weeks are left and how many players signed up, and always finishes with exactly one winner.'
-      : 'Survivor: clear the weekly point threshold to advance, or you\'re eliminated.';
+      ? "KnightFall Guillotine: no point threshold — each week, whoever has the lowest score(s) gets cut. The cut pace is worked out automatically once signups close, based on how many weeks are left and how many players signed up, and always finishes with exactly one winner. Don't be the one who gets cut."
+      : "Kingmaker Gauntlet: survive week to week by clearing the weekly point threshold, or you're eliminated.";
   };
   document.getElementById('cc_gameType').onchange = updateGameTypeFields;
   updateGameTypeFields();
@@ -1127,7 +1142,7 @@ async function renderHub(body){
     <div id="flairEditArea"></div>
     <div class="card">
       <h3>Your contests</h3>
-      ${myContests.length ? myContests.map(contestCardHTML).join('') : '<p>You haven\'t joined a contest yet — browse contests below.</p>'}
+      ${myContests.length ? myContests.map(contestCardHTML).join('') : "<p>You haven't joined a contest yet — browse contests below.</p>"}
     </div>
     <div class="card">
       <div class="row"><h3>Start a contest</h3><button class="small" id="newContestBtn" style="width:auto;">+ New contest</button></div>
@@ -1192,6 +1207,7 @@ async function renderPlatformAdmin(body){
             <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${countByContest[c.id] || 0} entrants · created ${ctDate(c.created_at)} · by ${esc(c.profiles?.display_name || 'Unknown')}</div>
           </span>
           <span class="row" style="gap:6px;width:auto;flex-wrap:wrap;">
+            <button class="small secondary" data-padmin-rename="${c.id}" data-name="${esc(c.name)}">Rename</button>
             <button class="small secondary" data-padmin-reject="${c.id}">Reject</button>
             <button class="small" data-padmin-approve="${c.id}">Approve</button>
             <button class="small danger" data-padmin-delete="${c.id}" data-name="${esc(c.name)}">Delete</button>
@@ -1201,7 +1217,7 @@ async function renderPlatformAdmin(body){
 
     <div class="card">
       <h3>All contests</h3>
-      <p>Every approved contest on the platform, regardless of status or visibility. Managing a contest's settings, players, or scoring still requires being that specific contest's own commissioner -- enter a contest and use its Admin tab if you commission it.</p>
+      <p>Every approved contest on the platform, regardless of status or visibility. Managing a contest's settings, players, or scoring still requires being that specific contest's own commissioner -- enter a contest and use its Admin tab if you commission it. Renaming a contest is Platform-Admin-only -- that contest's own commissioner doesn't get this control.</p>
       ${liveContests.length ? liveContests.map(c => `
         <div class="lb-row" style="flex-wrap:wrap;">
           <span>
@@ -1210,7 +1226,8 @@ async function renderPlatformAdmin(body){
           </span>
           <span class="row" style="gap:6px;width:auto;flex-wrap:wrap;">
             <button class="small" data-padmin-enter="${c.id}">Enter</button>
-            <button class="small secondary" data-padmin-archive="${c.id}">Archive</button>
+            <button class="small secondary" data-padmin-rename="${c.id}" data-name="${esc(c.name)}">Rename</button>
+            <button class="small warn" data-padmin-archive="${c.id}" data-name="${esc(c.name)}">Archive</button>
             <button class="small danger" data-padmin-delete="${c.id}" data-name="${esc(c.name)}">Delete</button>
           </span>
         </div>`).join('') : '<p>No contests yet.</p>'}
@@ -1225,7 +1242,10 @@ async function renderPlatformAdmin(body){
             <div style="color:var(--text);font-weight:700;">${esc(c.name)}</div>
             <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${countByContest[c.id] || 0} entrants · created ${ctDate(c.created_at)} · by ${esc(c.profiles?.display_name || 'Unknown')}</div>
           </span>
-          <button class="small" data-padmin-restore="${c.id}">Restore</button>
+          <span class="row" style="gap:6px;width:auto;flex-wrap:wrap;">
+            <button class="small secondary" data-padmin-rename="${c.id}" data-name="${esc(c.name)}">Rename</button>
+            <button class="small" data-padmin-restore="${c.id}">Restore</button>
+          </span>
         </div>`).join('') : '<p>Nothing archived.</p>'}
     </div>
 
@@ -1267,14 +1287,31 @@ async function renderPlatformAdmin(body){
       renderPlatformAdmin(body);
     });
   });
+  // Archiving now asks for confirmation first (same pattern as Delete below) since it sits
+  // right next to other row actions and a fat-fingered tap used to archive a live contest
+  // with no way to double-check first.
   document.querySelectorAll('[data-padmin-archive]').forEach(btn => {
-    btn.onclick = guard(async () => {
-      const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: btn.dataset.padminArchive });
-      if(error){ showBanner(error.message); return; }
-      showBanner('Contest archived.');
-      await loadContests();
-      renderPlatformAdmin(body);
-    });
+    btn.onclick = () => {
+      const id = btn.dataset.padminArchive;
+      const name = btn.dataset.name;
+      document.getElementById('padminConfirm').innerHTML = `
+        <div class="card" style="border-color:var(--caution);">
+          <p style="color:var(--text);">Archive "${esc(name)}"? This hides it from the Hub for everyone -- no data is deleted, and a Global Admin can restore it later.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="cancelPadminArchive" style="flex:1;">Cancel</button>
+            <button class="small warn" id="confirmPadminArchive" style="flex:1;">Archive contest</button>
+          </div>
+        </div>`;
+      document.getElementById('cancelPadminArchive').onclick = () => { document.getElementById('padminConfirm').innerHTML = ''; };
+      document.getElementById('confirmPadminArchive').onclick = guard(async () => {
+        const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: id });
+        if(error){ showBanner(error.message); return; }
+        showBanner('Contest archived.');
+        document.getElementById('padminConfirm').innerHTML = '';
+        await loadContests();
+        renderPlatformAdmin(body);
+      });
+    };
   });
   document.querySelectorAll('[data-padmin-restore]').forEach(btn => {
     btn.onclick = guard(async () => {
@@ -1284,6 +1321,40 @@ async function renderPlatformAdmin(body){
       await loadContests();
       renderPlatformAdmin(body);
     });
+  });
+  // Renaming a contest is Platform-Admin-only -- there's no equivalent control on a
+  // commissioner's own per-contest Admin tab (renderAdmin), by design (see
+  // survivor-fantasy-setup.md's "Contest rename" note). Only updates contests.name; the
+  // slug generated at creation is left untouched.
+  document.querySelectorAll('[data-padmin-rename]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.padminRename;
+      const currentName = btn.dataset.name;
+      document.getElementById('padminConfirm').innerHTML = `
+        <div class="card">
+          <h3>Rename contest</h3>
+          <label>Contest name (40 characters max)</label>
+          <input id="padminRenameInput" maxlength="40" value="${esc(currentName)}"/>
+          <div class="row" style="gap:8px;margin-top:10px;">
+            <button class="small secondary" id="cancelPadminRename" style="flex:1;">Cancel</button>
+            <button class="small" id="confirmPadminRename" style="flex:1;">Save name</button>
+          </div>
+        </div>`;
+      const input = document.getElementById('padminRenameInput');
+      input.focus();
+      input.select();
+      document.getElementById('cancelPadminRename').onclick = () => { document.getElementById('padminConfirm').innerHTML = ''; };
+      document.getElementById('confirmPadminRename').onclick = guard(async () => {
+        const val = input.value.trim();
+        if(!val){ showBanner('Contest name is required.'); return; }
+        const { error } = await sb.rpc('platform_admin_rename_contest', { p_contest_id: id, p_new_name: val });
+        if(error){ showBanner(error.message); return; }
+        showBanner('Contest renamed.');
+        document.getElementById('padminConfirm').innerHTML = '';
+        await loadContests();
+        renderPlatformAdmin(body);
+      });
+    };
   });
   document.querySelectorAll('[data-padmin-delete]').forEach(btn => {
     btn.onclick = () => {
@@ -1389,7 +1460,7 @@ function renderPickHistoryHTML(){
   return `
     <div class="card">
       <h3>Your locked-in picks this contest</h3>
-      <p>Whoever's currently locked into each slot, week by week.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : ' Once a slot\'s player has kicked off, they\'re locked out for the rest of the contest — swapping away from someone before his kickoff doesn\'t count against you. (You can still use anyone here in a different contest).'} Keep this as your own record in case a pick's ever in question.</p>
+      <p>Whoever's currently locked into each slot, week by week.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : " Once a slot's player has kicked off, they're locked out for the rest of the contest — swapping away from someone before his kickoff doesn't count against you. (You can still use anyone here in a different contest)."} Keep this as your own record in case a pick's ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
           <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
@@ -1446,7 +1517,9 @@ async function renderHome(body){
     // request_second_chance() for the exact server-side rule this
     // mirrors. The request just flags it for the commissioner to confirm
     // (Admin tab) once they've verified re-payment -- it doesn't
-    // reinstate the player on its own.
+    // reinstate the player on its own. This is a one-time rebuy per
+    // player per contest (second_chance_used is a boolean, not a
+    // counter) -- decided, not something more uses will be added to.
     const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
     const scDeadlineWeek = currentEntry.eliminated_week + 1;
     const scWindowOpen = scWindowWeeks > 0 && !!currentWeek && currentWeek.week_number <= scDeadlineWeek;
@@ -1488,7 +1561,7 @@ async function renderHome(body){
       }
       const scoreColor = pick.result === 'pass' ? 'var(--alive)' : pick.result === 'fail' ? 'var(--elim)' : 'var(--text-dim)';
       const scoreText = pick.score !== null ? `${fmtPts(pick.score)} pts` : 'Pending';
-      const estTag = (pick.score !== null && pick.source === 'computed') ? ' <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn\'t reviewed it yet">Est.</span>' : '';
+      const estTag = (pick.score !== null && pick.source === 'computed') ? ` <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn't reviewed it yet">Est.</span>` : '';
       return `
         <div class="recap-row">
           <span class="slot-label">${slot.slot}</span>
@@ -1517,12 +1590,12 @@ async function renderHome(body){
       return (!max || t > max) ? t : max;
     }, null);
 
-    // Eliminator has no per-week point threshold -- whether that total was
-    // "good enough" depends on where it landed relative to everyone else
-    // that week, not a fixed number, so the total is shown in a neutral
-    // color there instead of the green/red threshold comparison Survivor
-    // uses. pick.result (pass/fail, set by commissioner_finalize_week for
-    // both modes) still drives each slot's own row color either way.
+    // Eliminator (KnightFall Guillotine) has no per-week point threshold -- whether that
+    // total was "good enough" depends on where it landed relative to everyone else that
+    // week, not a fixed number, so the total is shown in a neutral color there instead of
+    // the green/red threshold comparison Survivor (Kingmaker Gauntlet) uses. pick.result
+    // (pass/fail, set by commissioner_finalize_week for both modes) still drives each
+    // slot's own row color either way.
     const totalColor = isEliminator ? 'var(--text)' : (currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)');
 
     // Always shows one of the two -- Live (yellow, glowing, same as the Caution pill's
@@ -1603,7 +1676,7 @@ async function renderHome(body){
       document.getElementById('scConfirmRequest').onclick = guard(async () => {
         const { error } = await sb.rpc('request_second_chance', { p_contest_id: currentContestId });
         if(error){ showBanner(error.message); return; }
-        showBanner('Second-chance rebuy requested — the admin will confirm once you\'ve paid.');
+        showBanner("Second-chance rebuy requested — the admin will confirm once you've paid.");
         await refreshCurrentEntry();
         render();
       });
@@ -1724,7 +1797,7 @@ async function renderPicks(body){
       // null before finalization) stays neutral instead of defaulting to
       // "fail" red, which is what this used to do.
       const scoreColor = pick.result === 'pass' ? 'var(--alive)' : pick.result === 'fail' ? 'var(--elim)' : 'var(--text-dim)';
-      const estTag = (pick.score !== null && pick.source === 'computed') ? ' <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn\'t reviewed it yet">Est.</span>' : '';
+      const estTag = (pick.score !== null && pick.source === 'computed') ? ` <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn't reviewed it yet">Est.</span>` : '';
       // A slot is still swappable up until the player CURRENTLY in it kicks
       // off -- submit_slot_pick enforces this same gate server-side, this
       // just decides whether to show the search box again or the final,
@@ -1976,7 +2049,7 @@ async function renderStandings(body){
   const liveNote = isLive ? `<p class="estimate-note">Week ${liveWeekNumber} is still in progress — totals update automatically as scores sync in.</p>` : '';
   const standingsDescription = isEliminator
     ? 'Ranked by cumulative points. Each week, whoever has the lowest score(s) is cut — surviving is about not being at the bottom, not clearing a fixed number. Total points also break ties on the cut line.'
-    : 'Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this Contest format (Survivor) other than bragging rights.';
+    : "Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this Contest format (Kingmaker Gauntlet) other than bragging rights.";
 
   body.innerHTML = `
     <div class="card">
@@ -2076,9 +2149,9 @@ function faqItems(contest){
       a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
     { q: "Can I join more than one contest at once?",
       a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
-    { q: "What's the difference between Survivor and Eliminator?",
-      a: "Survivor: your full team's combined score needs to clear a fixed weekly point threshold, or you're out. Eliminator: there's no fixed number — each week, whoever has the lowest score(s) is cut, with the pace worked out automatically so the contest always finishes with exactly one winner." },
-    { q: isEliminator ? "What score do I need to survive each week?" : "What score do I need to survive each week?",
+    { q: "What's the difference between Kingmaker Gauntlet and KnightFall Guillotine?",
+      a: "Kingmaker Gauntlet: survive week to week — your full team's combined score needs to clear a fixed weekly point threshold, or you're out. KnightFall Guillotine: there's no fixed number — each week, whoever has the lowest score(s) gets cut, with the pace worked out automatically so the contest always finishes with exactly one winner." },
+    { q: "What score do I need to survive each week?",
       a: isEliminator
         ? "There's no fixed number to hit — you just need to avoid being at the bottom of the field that week. How many are cut each week is worked out automatically once signups close, based on how many players are left and how many weeks remain. If several players tie for the lowest score, your cumulative season total (not just that week) breaks the tie — the lower total is the one cut."
         : `Your full team's combined score across all your starters needs to clear ${thresholdLine} — not any single player's score on its own. Check the Home tab for this contest's exact number.` },
@@ -2087,7 +2160,7 @@ function faqItems(contest){
     { q: "What happens if I don't finish my full lineup before the week closes?",
       a: "An incomplete team (missing even one slot) is treated as an elimination, the same as a team that didn't clear the point threshold." },
     { q: "Can I use the same NFL player twice?",
-      a: "Depends on the contest — check its Picks tab. Most contests only let you use a player once for the whole contest; some Eliminator contests allow reusing the same player week to week instead. Either way, the same player can still be used in a different contest you've joined." },
+      a: "Depends on the contest — check its Picks tab. Most contests only let you use a player once for the whole contest; some KnightFall Guillotine contests allow reusing the same player week to week instead. Either way, the same player can still be used in a different contest you've joined." },
     { q: "What if my chosen player's game already started?",
       a: "You can't pick them. The search only shows players whose game hasn't kicked off yet, and bye-week teams are excluded automatically." },
     { q: "What if an NFL game gets cancelled or postponed?",
@@ -2099,7 +2172,7 @@ function faqItems(contest){
         ? `Whoever has the single highest team score that week wins it — even if that score also happened to be low enough to get that player cut the same week. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.`
         : `Whoever has the single highest team score that week wins it — even if that score also happened to be below the survival threshold. If more than one player ties for the highest score, that week's prize splits evenly between them. Weekly prizes (if any) differ from Contest to Contest based commish's decision. If available, the prize pool is split evenly across eligible weeks.` },
     { q: "I got eliminated — is there any way back in?",
-      a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. If you don't see that button, check with that contest's own admin." },
+      a: "Depends on the contest. If a second-chance rebuy window is open for you, you'll see a \"Use second-chance rebuy\" button right on this contest's Home tab (typically only for a short window right after you're eliminated) — tap it and the admin will confirm once you've re-paid. This is a one-time rebuy per player per contest, not something you can use more than once. If you don't see that button, check with that contest's own admin." },
     { q: "Where can I see past weeks' high scores?",
       a: "A contest's Home tab has a weekly high-scores card with ‹ › arrows to flip through every finalized week. For the full season-long list in one place, check the \"Weekly high score history\" section on that contest's Prizes tab — tap a week to expand its top 5." }
   ];
@@ -2329,11 +2402,11 @@ async function renderAdmin(body){
         ${!isFinalized ? '<button class="small secondary" id="refreshScoresBtn" style="width:auto;">Refresh scores now</button>' : ''}
       </div>
       ${!isFinalized && computedCount ? `<p>${computedCount} score${computedCount === 1 ? '' : 's'} below ${computedCount === 1 ? 'is' : 'are'} auto-filled from live NFL stats (tagged "Est.") and haven't been reviewed yet — double-check before finalizing.</p>` : ''}
-      ${!isFinalized ? '<p class="estimate-note">A score still blank a while after that player\'s game has ended usually means we couldn\'t automatically match them — enter it manually below. (Someone who played but recorded nothing gets auto-filled as 0, not left blank.)</p>' : ''}
+      ${!isFinalized ? "<p class=\"estimate-note\">A score still blank a while after that player's game has ended usually means we couldn't automatically match them — enter it manually below. (Someone who played but recorded nothing gets auto-filled as 0, not left blank.)</p>" : ''}
       ${scoresTableHTML}
       ${!isFinalized ? '<button id="saveScores" style="margin-top:12px;">Save scores</button>' : ''}
       <button id="finalizeWeek" style="margin-top:10px;">${isFinalized ? 'Re-finalize' : 'Finalize'} week ${weekForScores}</button>
-      ${isEliminator ? '<p class="estimate-note">Eliminator: finalizing works out how many to cut this week automatically (based on who\'s still alive and how many weeks remain) and cuts whoever has the lowest score(s), breaking ties by cumulative season points.</p>' : ''}
+      ${isEliminator ? "<p class=\"estimate-note\">Finalizing works out how many to cut this week automatically (based on who's still alive and how many weeks remain) and cuts whoever has the lowest score(s), breaking ties by cumulative season points.</p>" : ''}
       <div id="finalizeConfirm"></div>
     </div>
 
@@ -2341,7 +2414,7 @@ async function renderAdmin(body){
       <h3>Danger zone</h3>
       <p>Archiving hides this contest from the Hub for everyone — no data is deleted, and a Global Admin can restore it later. Deleting is only available while nobody besides you has joined or picked in this contest, and permanently erases it.</p>
       <div class="row" style="gap:8px;margin-top:10px;">
-        <button class="small secondary" id="archiveContestBtn" style="flex:1;">Archive contest</button>
+        <button class="small warn" id="archiveContestBtn" style="flex:1;">Archive contest</button>
         <button class="small danger" id="deleteContestBtn" style="flex:1;" ${soleEntrant ? '' : 'disabled title="Other players have joined — archive instead"'}>Delete contest</button>
       </div>
       <div id="dangerZoneConfirm"></div>
@@ -2443,14 +2516,29 @@ async function renderAdmin(body){
     };
   }
 
-  document.getElementById('archiveContestBtn').onclick = guard(async () => {
-    const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: currentContestId });
-    if(error){ showBanner(error.message); return; }
-    showBanner('Contest archived — it\'s hidden from the Hub. A Global Admin can restore it if needed.');
-    currentContestId = null; activeTab = 'hub';
-    await Promise.all([loadContests(), loadMyEntries()]);
-    render();
-  });
+  // Archiving from the per-contest Admin tab now asks for confirmation first, same as
+  // Delete right next to it -- previously a single click here archived the contest
+  // immediately, which was an easy mis-click since it sits right beside the destructive
+  // Delete button.
+  document.getElementById('archiveContestBtn').onclick = () => {
+    document.getElementById('dangerZoneConfirm').innerHTML = `
+      <div class="confirm-box">
+        <p style="color:var(--text);">Archive "${esc(currentContest?.name || 'this contest')}"? This hides it from the Hub for everyone — no data is deleted, and a Global Admin can restore it later.</p>
+        <div class="row" style="gap:8px;margin-top:6px;">
+          <button class="small secondary" id="cancelArchive" style="flex:1;">Cancel</button>
+          <button class="small warn" id="confirmArchive" style="flex:1;">Archive contest</button>
+        </div>
+      </div>`;
+    document.getElementById('cancelArchive').onclick = () => { document.getElementById('dangerZoneConfirm').innerHTML = ''; };
+    document.getElementById('confirmArchive').onclick = guard(async () => {
+      const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: currentContestId });
+      if(error){ showBanner(error.message); return; }
+      showBanner("Contest archived — it's hidden from the Hub. A Global Admin can restore it if needed.");
+      currentContestId = null; activeTab = 'hub';
+      await Promise.all([loadContests(), loadMyEntries()]);
+      render();
+    });
+  };
   const deleteContestBtn = document.getElementById('deleteContestBtn');
   if(deleteContestBtn && !deleteContestBtn.disabled){
     deleteContestBtn.onclick = () => {
@@ -2521,6 +2609,7 @@ sb.auth.onAuthStateChange(async (event, s) => {
   }
   render();
 })();
+
 </script>
 </body>
 </html>
