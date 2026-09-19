@@ -144,6 +144,9 @@
   .faq-q.open::after{content:'−';}
   .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
   .faq-a.open{display:block;}
+  .gm-row{display:flex;gap:12px;align-items:flex-start;margin-top:12px;}
+  .gm-row:first-child{margin-top:0;}
+  .gm-icon-placeholder{width:100px;height:100px;flex:0 0 100px;border:1.5px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);line-height:1.4;padding:6px;}
   .history-text{color:var(--text);line-height:1.9;}
   .history-sep{color:var(--purple);margin:0 2px;}
   .week-tag{font-size:10.5px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
@@ -288,9 +291,20 @@ const SPORTS = [
   { value: 'mlb', label: 'MLB', enabled: false },
   { value: 'mma', label: 'MMA', enabled: false }
 ];
+// Each mode's hubBlurb is the longer description on the Hub's "Game Modes"
+// card; reminder is the short line shown under the Create Contest form's
+// own game-mode dropdown -- kept separate so the Hub carries the full
+// explanation while the form just jogs the memory of someone who's already
+// read it. imgSlug names the artwork file this mode will use once real art
+// exists (images/mode-<imgSlug>.png) -- gameModesCardHTML() currently
+// renders a placeholder box instead of an <img> for either mode.
 const GAME_TYPES = [
-  { value: 'threshold_survivor', label: 'Kingmaker Gauntlet' },
-  { value: 'eliminator', label: 'KnightFall Guillotine' }
+  { value: 'threshold_survivor', label: 'Kingmaker Gauntlet', imgSlug: 'kingmaker',
+    hubBlurb: "No cumulative score to hide behind — the realm judges you fresh each week. Clear the weekly threshold (100 points by default, set by the commissioner) or you're banished from the kingdom. There's no rival to outduel here, just the bar itself: every degen who clears it survives together, however many that turns out to be.",
+    reminder: "Clear the weekly threshold or face banishment." },
+  { value: 'eliminator', label: 'KnightFall Guillotine', imgSlug: 'knightfall',
+    hubBlurb: "No threshold to hide behind — just don't be the one caught at the bottom of the pile. Every week, the lowest scorer(s) meet the blade. The executioner's pace is calculated automatically from how many are still standing and how many weeks remain, so the field is always carved down to exactly one sovereign by the end. Unlike the Gauntlet, this is a straight duel against the whole pool — outscore them, not a number.",
+    reminder: "Lowest score meets the blade — survive to rule alone." }
 ];
 function gameTypeLabel(gameType){
   return GAME_TYPES.find(g => g.value === gameType)?.label || gameType;
@@ -863,6 +877,7 @@ async function signOut(){
   screen = 'auth'; activeTab = 'hub';
   otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
   clearInterval(otpResendTimer);
+  saveGameModesCollapsed(false); // reset the Hub's Game Modes card back to expanded for next sign-in
   renderHeroBanner();
   applyThemeAccent();
   render();
@@ -1024,6 +1039,57 @@ function contestCardHTML(c){
     </div>`;
 }
 
+// Hub's "Game Modes" reference card -- sits between "Your contests" and
+// "Start a contest" so a player browsing open contests (e.g. seeing
+// "Kingmaker Gauntlet" or "KnightFall Guillotine" on a card) has somewhere
+// to learn how each mode plays before joining, without leaving the Hub.
+// Collapsed/expanded state persists per-device via localStorage (cleared
+// on sign-out in signOut()) so it stays out of the way once someone's
+// already read it, but starts expanded the first time. Reuses the same
+// .faq-q/.faq-a plus-minus accordion look as the FAQ tab and the Picks
+// tab's pick-history accordion, rather than introducing a new icon.
+const GAME_MODES_COLLAPSED_KEY = 'dkg_gameModesCollapsed';
+function loadGameModesCollapsed(){
+  try { return localStorage.getItem(GAME_MODES_COLLAPSED_KEY) === '1'; } catch(e){ return false; }
+}
+function saveGameModesCollapsed(collapsed){
+  try {
+    if(collapsed) localStorage.setItem(GAME_MODES_COLLAPSED_KEY, '1');
+    else localStorage.removeItem(GAME_MODES_COLLAPSED_KEY);
+  } catch(e){ /* localStorage unavailable -- just won't persist, not fatal */ }
+}
+function gameModesCardHTML(){
+  const open = !loadGameModesCollapsed();
+  return `
+    <div class="card">
+      <div class="faq-q ${open ? 'open' : ''}" id="gmToggle">Game Modes</div>
+      <div class="faq-a ${open ? 'open' : ''}" id="gmBody">
+        ${GAME_TYPES.map(g => `
+          <div class="gm-row">
+            <div class="gm-icon-placeholder" title="Artwork coming soon">Art<br>coming<br>soon</div>
+            <div style="min-width:0;">
+              <div style="color:var(--text);font-weight:700;">${esc(g.label)}</div>
+              <p style="margin-top:4px;">${esc(g.hubBlurb)}</p>
+            </div>
+          </div>`).join('')}
+        <button class="muted-link" id="gmFaqLink" type="button" style="margin-top:6px;">Full rules in the FAQ →</button>
+      </div>
+    </div>`;
+}
+function wireGameModesCard(){
+  const toggle = document.getElementById('gmToggle');
+  const panel = document.getElementById('gmBody');
+  if(toggle && panel){
+    toggle.onclick = () => {
+      const nowOpen = panel.classList.toggle('open');
+      toggle.classList.toggle('open', nowOpen);
+      saveGameModesCollapsed(!nowOpen);
+    };
+  }
+  const faqLink = document.getElementById('gmFaqLink');
+  if(faqLink) faqLink.onclick = () => { activeTab = 'faq'; render(); };
+}
+
 function renderCreateContestForm(area){
   area.innerHTML = `
     <div class="card">
@@ -1084,11 +1150,13 @@ function renderCreateContestForm(area){
   const updateGameTypeFields = () => {
     const gt = document.getElementById('cc_gameType').value;
     const isEliminator = gt === 'eliminator';
+    const mode = GAME_TYPES.find(g => g.value === gt);
     document.getElementById('cc_reuseWrap').style.display = isEliminator ? 'flex' : 'none';
     document.getElementById('cc_thresholdWrap').style.display = isEliminator ? 'none' : 'block';
-    document.getElementById('cc_gameTypeNote').textContent = isEliminator
-      ? "KnightFall Guillotine: no point threshold — each week, whoever has the lowest score(s) gets cut. The cut pace is worked out automatically once signups close, based on how many weeks are left and how many players signed up, and always finishes with exactly one winner. Don't be the one who gets cut."
-      : "Kingmaker Gauntlet: survive week to week by clearing the weekly point threshold, or you're eliminated.";
+    // Short reminder only -- the full explanation now lives on the Hub's
+    // Game Modes card (gameModesCardHTML() above), which someone has
+    // presumably already seen before reaching this form.
+    document.getElementById('cc_gameTypeNote').textContent = mode ? `${mode.label}: ${mode.reminder}` : '';
   };
   document.getElementById('cc_gameType').onchange = updateGameTypeFields;
   updateGameTypeFields();
@@ -1144,6 +1212,7 @@ async function renderHub(body){
       <h3>Your contests</h3>
       ${myContests.length ? myContests.map(contestCardHTML).join('') : "<p>You haven't joined a contest yet — browse contests below.</p>"}
     </div>
+    ${gameModesCardHTML()}
     <div class="card">
       <div class="row"><h3>Start a contest</h3><button class="small" id="newContestBtn" style="width:auto;">+ New contest</button></div>
       <div id="createContestArea"></div>
@@ -1155,6 +1224,7 @@ async function renderHub(body){
   `;
   wireNameEdit(body);
   wireFlairPicker(body);
+  wireGameModesCard();
 
   document.getElementById('newContestBtn').onclick = () => {
     const area = document.getElementById('createContestArea');
