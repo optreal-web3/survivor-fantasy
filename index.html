@@ -127,13 +127,14 @@
   .scoreInput{width:64px;flex:0 0 auto;margin:0;padding:6px 8px;font-size:13px;text-align:right;}
   .est-pill{font-size:9.5px;padding:2px 7px;border-radius:5px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px;background:var(--pending-dim);color:var(--pending);border:1px solid var(--pending);flex:0 0 auto;}
   /* Player Projections card (Picks tab): .proj-option is one High/Mid/Low
-     (or KnightFall's single best) block, reusing .stat rows for its
-     per-slot lines so it matches the rest of the app's number formatting
-     rather than introducing a new row style. .proj-tag is the small inline
-     "X.X proj." badge shown next to a name in search results. */
+     (or KnightFall's single best) block -- title+total on one line, then a
+     single wrapped paragraph of "SLOT Name" entries rather than a row per
+     slot, to keep the whole card from running long on mobile. .proj-tag is
+     the small inline "X.X proj." badge shown next to a name in search
+     results. */
   .proj-option{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:8px;}
   .proj-option-title{font-weight:700;color:var(--text);font-size:13.5px;}
-  .proj-alt-group:first-child{margin-top:0;}
+  .proj-option-roster{margin-top:4px;font-size:12.5px;color:var(--text-dim);line-height:1.5;}
   .proj-tag{font-size:11px;font-weight:700;color:var(--text-dim);white-space:nowrap;}
   /* Week-status pill (Contest Home's "Week N" heading): Live/Final, built on --caution/
      --alive the same way the Standings status pills are, and deliberately NOT on --purple/
@@ -1938,24 +1939,52 @@ function buildTargetLineup(byPosition, target, mode){
   }
 
   let total = totalNow();
-  while(true){
-    if(mode === 'atLeast' && total >= target) break;
-    let bestState = null, bestDelta = null, bestMetric = mode === 'atLeast' ? Infinity : Math.abs(target - total);
-    for(const s of state){
-      if(s.windowTop <= 0) continue; // already holding this position's best N -- no room to improve
-      const outIdx = s.windowTop + s.n - 1; // current worst-held player for this position
-      const inIdx = s.windowTop - 1;        // next-better player to swap in
-      const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score;
-      if(mode === 'atLeast'){
-        if(delta < bestMetric){ bestMetric = delta; bestState = s; bestDelta = delta; }
-      } else {
-        const dist = Math.abs(target - (total + delta));
-        if(dist < bestMetric){ bestMetric = dist; bestState = s; bestDelta = delta; }
+  if(mode === 'atLeast'){
+    while(total < target){
+      let bestState = null, bestDelta = Infinity;
+      for(const s of state){
+        if(s.windowTop <= 0) continue; // already holding this position's best N -- no room to improve
+        const outIdx = s.windowTop + s.n - 1, inIdx = s.windowTop - 1;
+        const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score;
+        if(delta < bestDelta){ bestDelta = delta; bestState = s; }
       }
+      if(!bestState) break; // no position has room to move -- at the best lineup possible
+      bestState.windowTop -= 1;
+      total += bestDelta;
     }
-    if(!bestState) break; // no position has room to move -- at the best lineup possible
-    bestState.windowTop -= 1;
-    total += bestDelta;
+  } else {
+    // 'closest' (Mid) has to be able to move BOTH directions, not just
+    // climb -- a thin position (few real candidates left that late in the
+    // week, so its available ranks are far apart in value) can easily
+    // overshoot straight past target in a single upward step. Climb-only
+    // gets permanently stuck there: every remaining position can only add
+    // more, which moves further from target, never closer, so they never
+    // move at all even from their absolute worst. Letting a position step
+    // back down a rank lets it correct that overshoot and free up room for
+    // the others to climb instead. atLeast doesn't have this problem --
+    // crossing the target from below is success there, not something to
+    // correct.
+    const worstTop = s => s.list.length - s.n;
+    while(true){
+      let bestState = null, bestDir = 0, bestDelta = null, bestDist = Math.abs(target - total);
+      for(const s of state){
+        if(s.windowTop > 0){
+          const outIdx = s.windowTop + s.n - 1, inIdx = s.windowTop - 1;
+          const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score;
+          const dist = Math.abs(target - (total + delta));
+          if(dist < bestDist){ bestDist = dist; bestState = s; bestDir = -1; bestDelta = delta; }
+        }
+        if(s.windowTop < worstTop(s)){
+          const outIdx = s.windowTop, inIdx = s.windowTop + s.n;
+          const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score; // negative -- a step down
+          const dist = Math.abs(target - (total + delta));
+          if(dist < bestDist){ bestDist = dist; bestState = s; bestDir = 1; bestDelta = delta; }
+        }
+      }
+      if(!bestState) break; // no move in either direction gets closer -- local optimum
+      bestState.windowTop += bestDir;
+      total += bestDelta;
+    }
   }
   const heldByPosition = {};
   state.forEach(s => { heldByPosition[s.position] = s.list.slice(s.windowTop, s.windowTop + s.n); });
@@ -1968,26 +1997,31 @@ function buildTargetLineup(byPosition, target, mode){
   return { chosen, total: totalNow(), reachable: true };
 }
 
-const PROJECTIONS_COLLAPSED_KEY = 'dkg_projCollapsed';
+const PROJECTIONS_COLLAPSED_KEY = 'dkg_projExpanded';
+// Deliberately the opposite default from Game Modes' accordion (which
+// starts expanded) -- this card's content is data-heavy and re-derived
+// every visit, not a one-time rules read, so it defaults CLOSED and only
+// stays open across visits once someone's actually opened it once. Stores
+// "expanded" (not "collapsed") so an absent/missing key means closed.
 function loadProjCollapsed(){
-  try { return localStorage.getItem(PROJECTIONS_COLLAPSED_KEY) === '1'; } catch(e){ return false; }
+  try { return localStorage.getItem(PROJECTIONS_COLLAPSED_KEY) !== '1'; } catch(e){ return true; }
 }
 function saveProjCollapsed(collapsed){
   try {
-    if(collapsed) localStorage.setItem(PROJECTIONS_COLLAPSED_KEY, '1');
-    else localStorage.removeItem(PROJECTIONS_COLLAPSED_KEY);
+    if(collapsed) localStorage.removeItem(PROJECTIONS_COLLAPSED_KEY);
+    else localStorage.setItem(PROJECTIONS_COLLAPSED_KEY, '1');
   } catch(e){ /* localStorage unavailable -- just won't persist, not fatal */ }
 }
-function lineupLineHTML(row){
-  if(!row.player) return `<div class="stat"><span>${esc(row.slot)}</span><b style="color:var(--elim)">Not enough options</b></div>`;
-  return `<div class="stat"><span>${esc(row.slot)} — ${esc(row.player.full_name)} <span style="color:var(--text-dim)">(${esc(row.player.team)})</span></span><b>${fmtPts(row.player.projected_score)}</b></div>`;
+function lineupRosterLine(chosen){
+  return chosen.map(c => c.player ? `${esc(c.slot)} ${esc(c.player.full_name)}` : `${esc(c.slot)} —`).join(', ');
 }
-// Caller is always the one that's already checked chosen/total are usable
-// (high.complete, low.reachable, mid != null) -- this just renders.
+// One compact line per option (roster names + a single total) rather than
+// one line per slot -- 3 options at 7-8 lines each was taking up a full
+// mobile screen before anyone even looked at their own lineup.
 function projectionsOptionHTML(title, chosen, total){
   return `<div class="proj-option">
     <div class="proj-option-title">${esc(title)} <span style="float:right;">${fmtPts(total)} pts</span></div>
-    ${chosen.map(lineupLineHTML).join('')}
+    <p class="proj-option-roster">${lineupRosterLine(chosen)}</p>
   </div>`;
 }
 // Kingmaker Gauntlet: High/Mid/Low, all built from the same candidate pool.
@@ -2020,21 +2054,19 @@ function kingmakerProjectionsHTML(byPosition, threshold){
 // single best lineup, plus a browsable list of the next-best options at
 // each position so there's still something to weigh beyond one number
 // (agreed alternative to a k-best-lineups search -- see chat).
-const PROJECTIONS_ALT_COUNT = 5;
+const PROJECTIONS_ALT_COUNT = 3;
 function knightfallProjectionsHTML(byPosition){
   const high = buildHighestLineup(byPosition);
   const positions = [...new Set(lineupSlots.map(s => s.position))];
   const altHTML = positions.map(pos => {
     const list = (byPosition[pos] || []).slice(0, PROJECTIONS_ALT_COUNT);
     if(!list.length) return '';
-    return `<div class="proj-alt-group">
-      <div style="color:var(--text-dim);font-size:12px;margin-top:8px;">${esc(pos)}</div>
-      ${list.map(p => `<div class="stat"><span>${esc(p.full_name)} <span style="color:var(--text-dim)">(${esc(p.team)})</span></span><b>${fmtPts(p.projected_score)}</b></div>`).join('')}
-    </div>`;
+    const line = list.map(p => `${esc(p.full_name)} ${fmtPts(p.projected_score)}`).join(', ');
+    return `<div class="stat"><span>${esc(pos)}</span><span style="text-align:right;">${line}</span></div>`;
   }).join('');
   return `
     ${high.complete ? projectionsOptionHTML('Highest Score Projection', high.chosen, high.total) : `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`}
-    <div style="color:var(--text);font-weight:700;margin-top:10px;">Other strong options</div>
+    <div style="color:var(--text);font-weight:700;font-size:13px;margin-top:8px;">Other strong options</div>
     ${altHTML || '<p class="estimate-note">No other projected players available this week.</p>'}
   `;
 }
