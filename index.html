@@ -1023,7 +1023,7 @@ function contestCardHTML(c){
     actionHTML = `<span class="row" style="gap:8px;width:auto;flex-wrap:nowrap;">${statusPill}<button class="small" data-enter="${c.id}">Enter</button></span>`;
   } else if(!c.platform_approved){
     actionHTML = `<button class="small secondary" disabled>Awaiting approval</button>`;
-  } else if(c.status !== 'open' || !c.registration_open){
+  } else if(!c.registration_open){
     actionHTML = `<button class="small secondary" disabled>Registration closed</button>`;
   } else {
     actionHTML = `<button class="small" data-join="${c.id}">Join</button>`;
@@ -1571,7 +1571,7 @@ async function renderHome(body){
 
   let statusHTML = '';
   if(!currentEntry){
-    const canJoin = contestRow?.status === 'open' && !!contestRow?.registration_open;
+    const canJoin = !!contestRow?.registration_open;
     statusHTML = `
       <div class="card">
         <h3>You haven't joined this contest</h3>
