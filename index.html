@@ -1898,115 +1898,73 @@ function buildHighestLineup(byPosition){
   return { chosen, total, complete };
 }
 
-// Shared target-seeking routine behind Kingmaker's Mid and Low outputs --
-// one greedy climb, parameterized by what "done" means. Starts from the
-// worst legal lineup (cheapest available player per slot) and repeatedly
-// bumps whichever single slot gets closest to the goal, one rank at a time
-// within that slot's own position list. This is a heuristic, not an exact
-// solve -- given projections are inherently approximate to begin with,
-// chasing a mathematically-exact minimal-clearing lineup on top of already
-// -fuzzy numbers isn't worth the extra code (agreed approach, see chat).
-// mode 'atLeast': cheapest lineup with total >= target (Low/"Just make the
-// cut"). mode 'closest': lineup whose total lands nearest target from
-// either side (Mid) -- naturally never exceeds the true best lineup, since
-// it stops climbing once further swaps move away from target.
-// Works per POSITION (not per slot) so that a position needing more than
-// one slot (e.g. 2 RB) always holds that many DISTINCT players -- each
-// position keeps a sliding window of its N held players over its sorted
-// -best-to-worst list; windowTop=0 holds the best N, windowTop=list.length-N
-// holds the worst N. A single greedy step slides one position's window up
-// by one (swap its current worst-held for the next-best available),
-// chosen each round by whichever position's swap makes the most progress
-// toward target. This is what keeps two RB slots from ever settling on the
-// same player, which a naive per-slot version would allow.
+// Shared target-seeking routine behind Kingmaker's Mid and Low outputs.
+// Exact search, not a heuristic -- replaces two failed attempts at a
+// step-by-step greedy (one that could get permanently stuck after
+// overshooting, one that could cycle back and forth forever without
+// progress -- see chat history/commit log if either ever needs revisiting).
+// For each position, enumerates every real contiguous "best N of these"
+// combination and its total (e.g. 2 RB slots with 5 candidates has exactly
+// 4 possible pairs: ranks [0,1], [1,2], [2,3], [3,4]) capped to each
+// position's top TARGET_SEARCH_CANDIDATE_CAP candidates -- a target lineup
+// never has a real reason to reach deeper than that, since anything past
+// the top ~20 at a position is far enough below the best available that it
+// essentially never wins a "clear this threshold" or "closest to this
+// number" comparison anyway. Then takes the full cartesian product across
+// positions (a handful of positions x a bounded handful of windows each is
+// at most a few hundred thousand plain additions -- trivial, not a
+// performance risk even on a full slate) and picks whichever REAL
+// combination actually wins: cheapest that clears target ('atLeast'), or
+// nearest to target from either side ('closest').
+const TARGET_SEARCH_CANDIDATE_CAP = 20;
 function buildTargetLineup(byPosition, target, mode){
   const positions = [...new Set(lineupSlots.map(s => s.position))];
   const counts = {};
   lineupSlots.forEach(s => counts[s.position] = (counts[s.position]||0) + 1);
-  const state = positions.map(pos => {
-    const list = byPosition[pos] || [];
+
+  const perPosition = positions.map(pos => {
+    const list = (byPosition[pos] || []).slice(0, TARGET_SEARCH_CANDIDATE_CAP);
     const n = counts[pos];
-    return { position: pos, list, n, windowTop: Math.max(0, list.length - n) };
+    if(list.length < n) return null; // not enough candidates to fill this position at all
+    const windows = [];
+    for(let start = 0; start + n <= list.length; start++){
+      const players = list.slice(start, start + n);
+      windows.push({ players, sum: players.reduce((s,p) => s + p.projected_score, 0) });
+    }
+    return { position: pos, windows };
   });
-  if(state.some(s => s.list.length < s.n)) return { chosen: null, total: null, reachable: false };
+  if(perPosition.some(p => p === null)) return { chosen: null, total: null, reachable: false };
 
-  const heldTotal = s => s.list.slice(s.windowTop, s.windowTop + s.n).reduce((sum,p) => sum + p.projected_score, 0);
-  const totalNow = () => state.reduce((sum,s) => sum + heldTotal(s), 0);
-  const bestPossible = state.reduce((sum,s) => sum + s.list.slice(0, s.n).reduce((a,p) => a + p.projected_score, 0), 0);
-
-  if(mode === 'atLeast' && bestPossible < target){
-    return { chosen: null, total: bestPossible, reachable: false }; // unreachable even at the best lineup
+  let combos = [{ total: 0, byPos: {} }];
+  for(const p of perPosition){
+    const next = [];
+    for(const c of combos){
+      for(const w of p.windows){
+        next.push({ total: c.total + w.sum, byPos: { ...c.byPos, [p.position]: w.players } });
+      }
+    }
+    combos = next;
   }
 
-  let total = totalNow();
-  if(mode === 'atLeast'){
-    while(total < target){
-      let bestState = null, bestDelta = Infinity;
-      for(const s of state){
-        if(s.windowTop <= 0) continue; // already holding this position's best N -- no room to improve
-        const outIdx = s.windowTop + s.n - 1, inIdx = s.windowTop - 1;
-        const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score;
-        if(delta < bestDelta){ bestDelta = delta; bestState = s; }
-      }
-      if(!bestState) break; // no position has room to move -- at the best lineup possible
-      bestState.windowTop -= 1;
-      total += bestDelta;
-    }
-  } else {
-    // 'closest' (Mid) has to be able to move BOTH directions, not just
-    // climb -- a thin position (few real candidates left that late in the
-    // week, so its available ranks are far apart in value) can easily
-    // overshoot straight past target in a single upward step. Climb-only
-    // gets permanently stuck there: every remaining position can only add
-    // more, which moves further from target, never closer, so they never
-    // move at all even from their absolute worst. Letting a position step
-    // back down a rank lets it correct that overshoot and free up room for
-    // the others to climb instead. atLeast doesn't have this problem --
-    // crossing the target from below is success there, not something to
-    // correct.
-    const worstTop = s => s.list.length - s.n;
-    // TEMPORARY diagnostic (remove once the real cause of the Mid bug is
-    // found) -- traces every round's decision so we can see what's
-    // actually happening in a real browser rather than guessing from
-    // screenshots. Logs unconditionally to the console; harmless no-op for
-    // players who never open DevTools.
-    const __trace = [];
-    while(true){
-      let bestState = null, bestDir = 0, bestDelta = null, bestDist = Math.abs(target - total);
-      for(const s of state){
-        if(s.windowTop > 0){
-          const outIdx = s.windowTop + s.n - 1, inIdx = s.windowTop - 1;
-          const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score;
-          const dist = Math.abs(target - (total + delta));
-          if(dist < bestDist){ bestDist = dist; bestState = s; bestDir = -1; bestDelta = delta; }
-        }
-        if(s.windowTop < worstTop(s)){
-          const outIdx = s.windowTop, inIdx = s.windowTop + s.n;
-          const delta = s.list[inIdx].projected_score - s.list[outIdx].projected_score; // negative -- a step down
-          const dist = Math.abs(target - (total + delta));
-          if(dist < bestDist){ bestDist = dist; bestState = s; bestDir = 1; bestDelta = delta; }
-        }
-      }
-      if(!bestState){
-        console.log('[projDebug] closest-mode target', target, 'START total', totalNow(),
-          'positions', state.map(s => ({ position: s.position, n: s.n, worstTop: worstTop(s), startWindowTop: Math.max(0, s.list.length - s.n), scores: s.list.map(p => Number(p.projected_score)) })),
-          'TRACE', __trace, 'FINAL total', total);
-        break; // no move in either direction gets closer -- local optimum
-      }
-      __trace.push({ position: bestState.position, dir: bestDir, delta: bestDelta, distBefore: Math.abs(target-total), distAfter: bestDist, totalAfter: total + bestDelta });
-      bestState.windowTop += bestDir;
-      total += bestDelta;
-    }
+  let best = null;
+  for(const c of combos){
+    if(mode === 'atLeast' && c.total < target) continue;
+    if(!best) { best = c; continue; }
+    const better = mode === 'atLeast' ? (c.total < best.total) : (Math.abs(target - c.total) < Math.abs(target - best.total));
+    if(better) best = c;
   }
-  const heldByPosition = {};
-  state.forEach(s => { heldByPosition[s.position] = s.list.slice(s.windowTop, s.windowTop + s.n); });
+  if(!best){
+    const bestPossible = combos.reduce((m,c) => Math.max(m, c.total), -Infinity);
+    return { chosen: null, total: bestPossible, reachable: false }; // atLeast only -- nothing clears target
+  }
+
   const takenIdx = {};
   const chosen = lineupSlots.map(slot => {
     const idx = takenIdx[slot.position] || 0;
     takenIdx[slot.position] = idx + 1;
-    return { slot: slot.slot, position: slot.position, player: heldByPosition[slot.position][idx] };
+    return { slot: slot.slot, position: slot.position, player: best.byPos[slot.position][idx] };
   });
-  return { chosen, total: totalNow(), reachable: true };
+  return { chosen, total: best.total, reachable: true };
 }
 
 const PROJECTIONS_COLLAPSED_KEY = 'dkg_projExpanded';
