@@ -2040,16 +2040,17 @@ function knightfallProjectionsHTML(byPosition){
     ${altHTML || '<p class="estimate-note">No other projected players available this week.</p>'}
   `;
 }
-function projectionsCardHTML(freshBody){
+function projectionsCardHTML(freshBody, reuseAllowed){
   const open = !loadProjCollapsed();
   const updatedNote = projectionsUpdatedAt
     ? `Projections as of ${ctTime(projectionsUpdatedAt)}.`
     : `Projections for this week aren't in yet — check back soon.`;
+  const availabilityNote = reuseAllowed ? "" : " — any player you've already used in this contest won't appear";
   return `
     <div class="card">
       <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Player Projections</div>
       <div class="faq-a ${open ? 'open' : ''}" id="projBody">
-        <p>These are estimates, not guarantees — nothing here is promised to happen. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. ${esc(updatedNote)}</p>
+        <p>These are estimates, not guarantees. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. Every player listed here is available for you to pick${availabilityNote}. ${esc(updatedNote)}</p>
         ${freshBody}
       </div>
     </div>`;
@@ -2180,7 +2181,7 @@ async function renderPicks(body){
     </div>
     <div id="nameEditArea"></div>
     <div id="flairEditArea"></div>
-    ${projectionsCardHTML(projectionsBodyHTML)}
+    ${projectionsCardHTML(projectionsBodyHTML, reuseAllowed)}
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
