@@ -1965,6 +1965,12 @@ function buildTargetLineup(byPosition, target, mode){
     // crossing the target from below is success there, not something to
     // correct.
     const worstTop = s => s.list.length - s.n;
+    // TEMPORARY diagnostic (remove once the real cause of the Mid bug is
+    // found) -- traces every round's decision so we can see what's
+    // actually happening in a real browser rather than guessing from
+    // screenshots. Logs unconditionally to the console; harmless no-op for
+    // players who never open DevTools.
+    const __trace = [];
     while(true){
       let bestState = null, bestDir = 0, bestDelta = null, bestDist = Math.abs(target - total);
       for(const s of state){
@@ -1981,7 +1987,13 @@ function buildTargetLineup(byPosition, target, mode){
           if(dist < bestDist){ bestDist = dist; bestState = s; bestDir = 1; bestDelta = delta; }
         }
       }
-      if(!bestState) break; // no move in either direction gets closer -- local optimum
+      if(!bestState){
+        console.log('[projDebug] closest-mode target', target, 'START total', totalNow(),
+          'positions', state.map(s => ({ position: s.position, n: s.n, worstTop: worstTop(s), startWindowTop: Math.max(0, s.list.length - s.n), scores: s.list.map(p => Number(p.projected_score)) })),
+          'TRACE', __trace, 'FINAL total', total);
+        break; // no move in either direction gets closer -- local optimum
+      }
+      __trace.push({ position: bestState.position, dir: bestDir, delta: bestDelta, distBefore: Math.abs(target-total), distAfter: bestDist, totalAfter: total + bestDelta });
       bestState.windowTop += bestDir;
       total += bestDelta;
     }
