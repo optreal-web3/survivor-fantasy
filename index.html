@@ -1209,18 +1209,21 @@ function renderCreateContestForm(area){
       <div id="cc_feeWrap" style="display:none;">
         <label id="cc_feeLabel">Entry fee</label>
         <input id="cc_fee" type="number" step="0.01" min="0" placeholder="e.g. 20"/>
+        <div class="note">Entry fees split into the prize pool by percentage (80% grand / 15% weekly / 5% organizer by default — adjustable afterward from the Admin tab).</div>
       </div>
-      <label>Prize structure</label>
-      <select id="cc_prizeMode">
-        <option value="pool">Pool split — grows with entry fees, split by %</option>
-        <option value="fixed">Fixed / sponsored amount — you set the exact prize(s)</option>
-      </select>
-      <div id="cc_fixedWrap" style="display:none;">
-        <label>Grand prize / Weekly prize (leave weekly at 0 if not offered)</label>
+      <div id="cc_sponsorToggleWrap" style="display:none;">
+        <label class="checkboxLabel">
+          <input id="cc_sponsorToggle" type="checkbox"/>
+          <span>A sponsor is adding bonus prize money on top of the entry-fee pool</span>
+        </label>
+      </div>
+      <div id="cc_sponsorWrap" style="display:none;">
+        <label id="cc_sponsorLabel">Sponsor prize amounts</label>
         <div class="row">
-          <input id="cc_fixedGrand" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
-          <input id="cc_fixedWeekly" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
+          <input id="cc_sponsorGrand" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
+          <input id="cc_sponsorWeekly" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
         </div>
+        <div class="note" id="cc_sponsorNote"></div>
       </div>
       <label>Starts at week / Ends at week</label>
       <div class="row">
@@ -1232,6 +1235,7 @@ function renderCreateContestForm(area){
         <label>Weekly prize paid through week</label>
         <input id="cc_wpew" type="number" min="1" max="18" placeholder="e.g. 6"/>
         <div class="note" id="cc_wpewNote"></div>
+        <div class="note" id="cc_sponsorWeeklyPreview"></div>
       </div>
       <div id="cc_thresholdWrap">
         <label>Weekly point threshold to survive</label>
@@ -1240,22 +1244,42 @@ function renderCreateContestForm(area){
       <label>Second-chance rebuy window (0 = not offered)</label>
       <input id="cc_scWeeks" type="number" min="0" value="0"/>
       <div class="note">Counts this contest's own weeks starting from 1, not real NFL week numbers and not added on top of the start week. Enter 3 to offer a rebuy to anyone eliminated in this contest's own week 1, 2, or 3 -- so a contest starting at real NFL week 5 would cover real weeks 5-7, not "starting week + 3" (real week 8).</div>
-      <div class="note">Everything else uses this app's standard defaults, for now. The prize structure choice above is locked in for this contest's whole life (archive and start a new one to change it later), but the actual percentages or fixed amounts can still be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
+      <div class="note">Everything else uses this app's standard defaults, for now. Entry-fee split percentages, sponsor amounts, and the weekly-prize end week can all still be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
       <div class="row" style="gap:8px;margin-top:12px;">
         <button class="small secondary" id="cc_cancel" style="flex:1;">Cancel</button>
         <button class="small" id="cc_create" style="flex:1;">Create contest</button>
       </div>
     </div>`;
-  document.getElementById('cc_currency').onchange = (e) => {
-    const val = e.target.value;
-    document.getElementById('cc_feeWrap').style.display = val === 'free' ? 'none' : 'block';
-    document.getElementById('cc_feeLabel').textContent = `Entry fee (${val.toUpperCase()})`;
+  const isFreeVal = () => document.getElementById('cc_currency').value === 'free';
+  // Sponsor prize amounts are additive on top of whatever the entry-fee
+  // pool works out to (which is always $0 for a Free contest, since
+  // there's no entry fee to split) -- there's no separate "prize
+  // structure" choice anymore. A Free contest has nothing BUT sponsor
+  // money to offer, so its sponsor fields are always shown, optional,
+  // left-blank-is-fine. A Paid (DGEN) contest already gets the pool split
+  // by default, so its sponsor fields sit behind a checkbox to keep the
+  // common no-sponsor case short.
+  const updateSponsorVisibility = () => {
+    const isFree = isFreeVal();
+    document.getElementById('cc_feeWrap').style.display = isFree ? 'none' : 'block';
+    document.getElementById('cc_feeLabel').textContent = `Entry fee (${document.getElementById('cc_currency').value.toUpperCase()})`;
+    document.getElementById('cc_sponsorToggleWrap').style.display = isFree ? 'none' : 'block';
+    const sponsorChecked = document.getElementById('cc_sponsorToggle').checked;
+    document.getElementById('cc_sponsorWrap').style.display = (isFree || sponsorChecked) ? 'block' : 'none';
+    document.getElementById('cc_sponsorLabel').textContent = isFree
+      ? 'Sponsor prize amounts (leave blank if this is just for fun)'
+      : 'Sponsor bonus amount (added on top of the entry-fee pool split)';
+    document.getElementById('cc_sponsorNote').textContent = isFree
+      ? "These are this contest's only prizes, since there's no entry fee -- leave a field at 0 to skip that prize. Adjustable later from the Admin tab."
+      : 'Adds a flat bonus on top of whatever the entry-fee pool works out to -- e.g. entry fees fund the pool, and a sponsor also throws in 50,000 DGEN.';
+    updateWpewVisibility();
+    updateSponsorWeeklyPreview();
   };
   // The "weekly prize paid through week" field is relevant whenever a
-  // weekly prize is actually in play: always for Pool mode (its
-  // weekly/grand/organizer split defaults on, still adjustable later in
-  // Admin), and only for Fixed mode once a nonzero weekly amount is
-  // typed in -- a fixed contest with no weekly prize has nothing for
+  // weekly prize is actually in play: always for a Paid contest (the
+  // pool's weekly split defaults on, still adjustable later in Admin),
+  // and only for a Free contest once a nonzero sponsor weekly amount is
+  // typed in -- a free contest with no sponsor money has nothing for
   // this field to describe. No default value is pre-filled either way;
   // cc_create refuses to submit a relevant-but-blank field rather than
   // silently falling back to the RPC's own default.
@@ -1270,31 +1294,50 @@ function renderCreateContestForm(area){
   // per-week prize split on the Prizes tab can work out the real number
   // of paid weeks correctly for a contest that doesn't start at week 1.
   const updateWpewNote = () => {
-    const mode = document.getElementById('cc_prizeMode').value;
+    const isFree = isFreeVal();
     const start = parseInt(document.getElementById('cc_startWeek').value);
     const end = parseInt(document.getElementById('cc_endWeek').value);
     const range = (start && end) ? `weeks ${start}–${end}` : 'the start/end week range above';
-    const base = mode === 'pool'
-      ? 'Weekly prizes are on by default for a new contest (adjustable later in Admin).'
-      : 'This is for the weekly prize above.';
+    const base = isFree
+      ? 'This is for the sponsored weekly prize above.'
+      : 'Weekly prizes from the entry-fee pool are on by default (adjustable later in Admin) -- this also covers any sponsor weekly bonus above.';
     document.getElementById('cc_wpewNote').textContent =
       `${base} Enter the real NFL week number this contest should stop paying it after -- must fall within ${range}.`;
   };
   const updateWpewVisibility = () => {
-    const mode = document.getElementById('cc_prizeMode').value;
-    const fixedWeeklyVal = parseFloat(document.getElementById('cc_fixedWeekly').value) || 0;
-    const relevant = mode === 'pool' || (mode === 'fixed' && fixedWeeklyVal > 0);
+    const isFree = isFreeVal();
+    const sponsorWeeklyVal = parseFloat(document.getElementById('cc_sponsorWeekly').value) || 0;
+    const relevant = !isFree || sponsorWeeklyVal > 0;
     document.getElementById('cc_wpewWrap').style.display = relevant ? 'block' : 'none';
     updateWpewNote();
   };
-  document.getElementById('cc_prizeMode').onchange = (e) => {
-    document.getElementById('cc_fixedWrap').style.display = e.target.value === 'fixed' ? 'block' : 'none';
-    updateWpewVisibility();
+  // Live preview so "Weekly prize" is never mistaken for a per-week amount
+  // -- it's always the TOTAL to be split evenly across the paid weeks. For
+  // a Free contest this preview is exact (sponsor money is the only
+  // component). For a Paid contest the pool's own weekly cut isn't
+  // knowable yet at creation time (it grows as players are approved), so
+  // only the sponsor's own per-week slice is previewed here -- the Prizes
+  // tab shows the real combined total once entries start coming in.
+  const updateSponsorWeeklyPreview = () => {
+    const isFree = isFreeVal();
+    const sponsorWeeklyVal = parseFloat(document.getElementById('cc_sponsorWeekly').value) || 0;
+    const start = parseInt(document.getElementById('cc_startWeek').value);
+    const wpew = parseInt(document.getElementById('cc_wpew').value);
+    const el = document.getElementById('cc_sponsorWeeklyPreview');
+    if(!sponsorWeeklyVal || !start || !wpew || wpew < start){ el.textContent = ''; return; }
+    const weeks = wpew - start + 1;
+    const perWeek = sponsorWeeklyVal / weeks;
+    el.textContent = isFree
+      ? `= ${fmtAmt(perWeek)} DGEN per week (weeks ${start}–${wpew}, ${weeks} week${weeks === 1 ? '' : 's'})`
+      : `+ ${fmtAmt(perWeek)} DGEN per week from the sponsor, on top of the pool's own weekly cut (weeks ${start}–${wpew})`;
   };
-  document.getElementById('cc_fixedWeekly').oninput = updateWpewVisibility;
-  document.getElementById('cc_startWeek').oninput = updateWpewNote;
+  document.getElementById('cc_currency').onchange = updateSponsorVisibility;
+  document.getElementById('cc_sponsorToggle').onchange = updateSponsorVisibility;
+  document.getElementById('cc_sponsorWeekly').oninput = () => { updateWpewVisibility(); updateSponsorWeeklyPreview(); };
+  document.getElementById('cc_startWeek').oninput = () => { updateWpewNote(); updateSponsorWeeklyPreview(); };
   document.getElementById('cc_endWeek').oninput = updateWpewNote;
-  updateWpewVisibility();
+  document.getElementById('cc_wpew').oninput = updateSponsorWeeklyPreview;
+  updateSponsorVisibility();
   // Eliminator-only fields (player-reuse toggle) and Survivor-only fields
   // (weekly threshold) show/hide based on the game-mode pick -- both are
   // locked in at creation, so this is the only place either one is set.
@@ -1322,9 +1365,8 @@ function renderCreateContestForm(area){
     const currencyVal = document.getElementById('cc_currency').value;
     const isFree = currencyVal === 'free';
     const fee = isFree ? null : (parseFloat(document.getElementById('cc_fee').value) || null);
-    const prizeMode = document.getElementById('cc_prizeMode').value;
-    const fixedGrand = prizeMode === 'fixed' ? (parseFloat(document.getElementById('cc_fixedGrand').value) || 0) : null;
-    const fixedWeekly = prizeMode === 'fixed' ? (parseFloat(document.getElementById('cc_fixedWeekly').value) || 0) : null;
+    const sponsorGrand = parseFloat(document.getElementById('cc_sponsorGrand').value) || 0;
+    const sponsorWeekly = parseFloat(document.getElementById('cc_sponsorWeekly').value) || 0;
     const threshold = parseFloat(document.getElementById('cc_threshold').value) || 100;
     // No default is pre-filled on either field -- a contest's actual
     // length should always be a conscious choice, not a silent "runs the
@@ -1339,18 +1381,17 @@ function renderCreateContestForm(area){
     if(endWeek < startWeek){ showBanner('End week has to be the same as or after the start week.'); return; }
     const scWeeks = parseInt(document.getElementById('cc_scWeeks').value) || 0;
     const uniqueReuse = gameType === 'eliminator' ? document.getElementById('cc_reuse').checked : true;
-    // A weekly prize is in play for every Pool-mode contest (its split
-    // defaults on) and for any Fixed-mode contest with a nonzero weekly
-    // amount -- in both cases the commissioner has to pick a last week
-    // for it here rather than the app silently defaulting to one. The
-    // value is a real NFL week number (see the comment above
-    // updateWpewNote), so it also has to actually fall within the
-    // contest's own start/end range -- a value outside that range can't
-    // mean anything real.
-    const wpewRequired = prizeMode === 'pool' || (prizeMode === 'fixed' && (fixedWeekly || 0) > 0);
+    // A weekly prize is in play for every Paid contest (its pool split
+    // defaults on) and for any Free contest with a nonzero sponsor weekly
+    // amount -- in both cases the commissioner has to pick a last week for
+    // it here rather than the app silently defaulting to one. The value is
+    // a real NFL week number (see the comment above updateWpewNote), so it
+    // also has to actually fall within the contest's own start/end range
+    // -- a value outside that range can't mean anything real.
+    const wpewRequired = !isFree || sponsorWeekly > 0;
     const wpewRaw = parseInt(document.getElementById('cc_wpew').value);
     if(wpewRequired && (!wpewRaw || wpewRaw < startWeek || wpewRaw > endWeek)){
-      showBanner(`Enter the NFL week (between ${startWeek} and ${endWeek}) a weekly prize should be paid through -- or set the weekly prize to 0 above if this contest isn't offering one.`);
+      showBanner(`Enter the NFL week (between ${startWeek} and ${endWeek}) a weekly prize should be paid through -- or clear the weekly prize amount above if this contest isn't offering one.`);
       return;
     }
     const weeklyPrizeEndWeek = wpewRequired ? wpewRaw : null;
@@ -1367,9 +1408,8 @@ function renderCreateContestForm(area){
       p_end_week: endWeek,
       p_currency: 'dgen',
       p_unique_players_per_season: uniqueReuse,
-      p_prize_mode: prizeMode,
-      p_fixed_grand_prize: fixedGrand,
-      p_fixed_weekly_prize: fixedWeekly
+      p_sponsor_grand_prize: sponsorGrand,
+      p_sponsor_weekly_prize: sponsorWeekly
     });
     if(error){ showBanner(error.message); return; }
     await Promise.all([loadContests(), loadMyEntries()]);
@@ -2583,58 +2623,59 @@ async function renderPrizes(body){
   ]);
   currentContest = contestRow;
   const currency = currencyForContest(contestRow);
-  const isFixed = contestRow.prize_mode === 'fixed';
+  const isFree = contestRow.is_free;
   const fee = contestRow.entry_fee || 0;
   const contestStartWeek = firstWeekRow?.week_number || 1;
   const weeklyPrizeEndWeek = contestRow.weekly_prize_end_week || contestStartWeek;
   const weeksPaidCount = Math.max(1, weeklyPrizeEndWeek - contestStartWeek + 1);
   const survivors = aliveCount || 0;
 
-  // Fixed-mode contests skip the entry-fee/percentage pool math entirely --
-  // the commissioner (or a sponsor) set the exact grand/weekly amounts
-  // directly, independent of turnout, and there's no organizer cut to show
-  // since nothing is being taken out of an entry-fee pool. Pool-mode
-  // contests keep the original percentage-of-total-pool math unchanged.
-  let grand, weekly, total, organizer;
-  if(isFixed){
-    grand = contestRow.fixed_grand_prize || 0;
-    weekly = contestRow.fixed_weekly_prize || 0;
-  } else {
+  // One unified formula for every contest, no more pool-vs-fixed mode
+  // branch: grand/weekly prize = the entry-fee pool's own % split (always
+  // $0 for a Free contest, since there's no entry fee) + an optional flat
+  // sponsor top-up (sponsor_grand_prize/sponsor_weekly_prize), additive for
+  // either currency. The organizer cut only ever applies to the entry-fee
+  // pool -- sponsor money is never taxed by it.
+  const sponsorGrand = contestRow.sponsor_grand_prize || 0;
+  const sponsorWeekly = contestRow.sponsor_weekly_prize || 0;
+  let total = 0, organizer = 0, poolGrand = 0, poolWeekly = 0;
+  if(!isFree){
     total = fee * ((count || 0) + (secondChanceCount || 0));
     organizer = total * contestRow.organizer_pct / 100;
-    weekly = total * contestRow.weekly_pct / 100;
-    grand = total * contestRow.grand_pct / 100;
+    poolWeekly = total * contestRow.weekly_pct / 100;
+    poolGrand = total * contestRow.grand_pct / 100;
   }
+  const grand = poolGrand + sponsorGrand;
+  const weekly = poolWeekly + sponsorWeekly;
   const perWeek = weekly / weeksPaidCount;
   const perSurvivor = survivors > 0 ? grand / survivors : 0;
+  // The currency pill next to an amount is only shown when that amount is
+  // actually nonzero -- a DGEN (or FREE) badge next to a $0 prize implies
+  // there's real money behind it when there isn't.
+  const pill = (amt) => amt > 0 ? currencyPillHTML(currency) : '';
+  const hasSponsor = sponsorGrand > 0 || sponsorWeekly > 0;
 
   body.innerHTML = `
     <div class="card">
       <h3>Prize pool</h3>
-      ${isFixed ? `
-      <div class="note">This contest's prizes are a fixed, sponsored amount — not tied to entry fees or how many people join.</div>
-      ${fee ? `<div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fmtAmt(fee)}</b></div>` : ''}
+      ${isFree ? `<div class="note">This is a free-to-play contest — any prizes here come entirely from a sponsor, not entry fees.</div>` : ''}
+      ${!isFree ? `<div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${pill(fee)}${fee ? fmtAmt(fee) : '—'}</b></div>` : ''}
       <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
+      ${!isFree && secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
+      ${!isFree ? `<div class="stat"><span>Total pool</span><b>${fmtAmt(total)}</b></div>` : ''}
       <div class="divider"></div>
-      <div class="stat"><span>Grand prize</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fmtAmt(grand)}</b></div>
+      ${!isFree ? `<div class="stat"><span>Grand prize pool (${contestRow.grand_pct}%)</span><b>${fmtAmt(poolGrand)}</b></div>` : ''}
+      ${sponsorGrand ? `<div class="stat"><span>${isFree ? 'Sponsor grand prize' : '+ Sponsor bonus'}</span><b>${fmtAmt(sponsorGrand)}</b></div>` : ''}
+      <div class="stat"><span${(!isFree && sponsorGrand) ? ' style="font-weight:600;"' : ''}>${(!isFree && sponsorGrand) ? 'Total grand prize' : 'Grand prize'}</span><b style="display:inline-flex;align-items:center;gap:6px;">${pill(grand)}${fmtAmt(grand)}</b></div>
       <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${fmtAmt(perSurvivor)} each` : '—'}</b></div>
       ${weekly ? `
-      <div class="stat"><span>Weekly prizes</span><b>${fmtAmt(weekly)} total</b></div>
+      ${!isFree ? `<div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${fmtAmt(poolWeekly)} total</b></div>` : ''}
+      ${sponsorWeekly ? `<div class="stat"><span>${isFree ? 'Sponsor weekly prize' : '+ Sponsor weekly bonus'}</span><b>${fmtAmt(sponsorWeekly)} total</b></div>` : ''}
+      <div class="stat"><span${(!isFree && sponsorWeekly) ? ' style="font-weight:600;"' : ''}>${(!isFree && sponsorWeekly) ? 'Total weekly prizes' : 'Weekly prizes'}</span><b>${fmtAmt(weekly)} total</b></div>
       <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks ${contestStartWeek}–${weeklyPrizeEndWeek}</span><b>${fmtAmt(perWeek)}</b></div>
-      <div class="note">Weekly prizes are paid weeks ${contestStartWeek} through ${weeklyPrizeEndWeek}.</div>` : ''}
-      <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>` : `
-      <div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fee ? fmtAmt(fee) : (currency === 'free' ? '' : '—')}</b></div>
-      <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
-      ${secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
-      <div class="stat"><span>Total pool</span><b>${fmtAmt(total)}</b></div>
-      <div class="divider"></div>
-      <div class="stat"><span>Grand prize pool (${contestRow.grand_pct}%)</span><b>${fmtAmt(grand)}</b></div>
-      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${fmtAmt(perSurvivor)} each` : '—'}</b></div>
-      <div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${fmtAmt(weekly)} total</b></div>
-      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks ${contestStartWeek}–${weeklyPrizeEndWeek}</span><b>${fmtAmt(perWeek)}</b></div>
-      <div class="note">Weekly prizes are paid weeks ${contestStartWeek} through ${weeklyPrizeEndWeek}. Totals update automatically as more players are approved.</div>
+      <div class="note">Weekly prizes are paid weeks ${contestStartWeek} through ${weeklyPrizeEndWeek}.${!isFree ? ' Pool totals update automatically as more players are approved.' : ''}</div>` : `<div class="note">No weekly prize is offered for this contest.</div>`}
       <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
-      <div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.</div>`}
+      ${!isFree ? `<div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.${hasSponsor ? ' The organizer cut only applies to entry fees, never to sponsor-contributed prize money.' : ''}</div>` : ''}
     </div>
     <div class="card">
       <h3>Weekly high score history</h3>
@@ -2760,13 +2801,18 @@ function renderLegend(body){
 
 async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }] = await Promise.all([
+  const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }, { count: approvedCount }] = await Promise.all([
     sb.from('contests').select('*').eq('id', currentContestId).single(),
     sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, second_chance_requested_at, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId),
-    sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number')
+    sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number'),
+    // Approved-entrant count, so the settings form below can show a live
+    // preview of the actual weekly-prize total (pool cut + sponsor bonus)
+    // divided across the paid weeks -- the same math the Prizes tab uses.
+    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true)
   ]);
   currentContest = contestRow;
   const isEliminator = contestRow.game_type === 'eliminator';
+  const isFree = contestRow.is_free;
   // weekly_prize_end_week is a real NFL week number (see the Create form's
   // cc_wpew comment), so its valid range is this contest's own start/end
   // week -- read straight off contest_weeks (already fetched above, in
@@ -2892,31 +2938,28 @@ async function renderAdmin(body){
 
     <div class="card">
       <h3>Contest settings</h3>
-      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''}${contestRow.prize_mode === 'fixed' ? ' · fixed/sponsored prizes' : ''} — sport, game mode, weeks, player-reuse, and prize structure (pool vs. fixed) are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
+      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''} — sport, game mode, weeks, and player-reuse are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
       ${isEliminator ? '' : `
-      <label>Weekly point threshold / Weekly prizes through week (NFL wk ${contestStartWeek}–${contestEndWeek})</label>
-      <div class="row">
-        <input id="s_threshold" type="number" value="${contestRow.weekly_threshold}" style="width:auto;flex:1;min-width:0;" placeholder="Threshold"/>
-        <input id="s_wpew" type="number" min="${contestStartWeek}" max="${contestEndWeek}" value="${contestRow.weekly_prize_end_week ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Through wk"/>
-      </div>`}
-      ${isEliminator ? `
+      <label>Weekly point threshold to survive</label>
+      <input id="s_threshold" type="number" value="${contestRow.weekly_threshold}" placeholder="Threshold"/>`}
       <label>Weekly prizes through week (NFL week ${contestStartWeek}–${contestEndWeek})</label>
-      <input id="s_wpew" type="number" min="${contestStartWeek}" max="${contestEndWeek}" value="${contestRow.weekly_prize_end_week ?? ''}" placeholder="Through wk"/>` : ''}
-      ${contestRow.prize_mode === 'fixed' ? `
-      <label>Entry fee (optional — informational only; prizes below don't depend on it)</label>
+      <input id="s_wpew" type="number" min="${contestStartWeek}" max="${contestEndWeek}" value="${contestRow.weekly_prize_end_week ?? ''}" placeholder="Through wk"/>
+      ${!isFree ? `
+      <label>Entry fee (DGEN)</label>
       <input id="s_fee" type="number" step="0.01" value="${contestRow.entry_fee ?? ''}" placeholder="Fee"/>
-      <label>Grand prize / Weekly prize</label>
+      <label>Entry-fee pool split — Grand % / Weekly % / Organizer %</label>
       <div class="row">
-        <input id="s_fixedGrand" type="number" step="0.01" value="${contestRow.fixed_grand_prize ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
-        <input id="s_fixedWeekly" type="number" step="0.01" value="${contestRow.fixed_weekly_prize ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
-      </div>` : `
-      <label>Entry fee / Grand % / Weekly % / Organizer %</label>
-      <div class="row">
-        <input id="s_fee" type="number" step="0.01" value="${contestRow.entry_fee ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Fee"/>
         <input id="s_grand" type="number" value="${contestRow.grand_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Grand %"/>
         <input id="s_week" type="number" value="${contestRow.weekly_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly %"/>
         <input id="s_org" type="number" value="${contestRow.organizer_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Organizer %"/>
-      </div>`}
+      </div>
+      <div class="note">Splits the entry-fee pool as it grows with approved entrants. Doesn't include the sponsor bonus below.</div>` : ''}
+      <label>${isFree ? 'Sponsor prize amounts (leave a field blank if this is just for fun)' : 'Sponsor bonus amount (added on top of the pool split above)'}</label>
+      <div class="row">
+        <input id="s_sponsorGrand" type="number" step="0.01" value="${contestRow.sponsor_grand_prize || ''}" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
+        <input id="s_sponsorWeekly" type="number" step="0.01" value="${contestRow.sponsor_weekly_prize || ''}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
+      </div>
+      <div class="note" id="s_sponsorWeeklyPreview"></div>
       <button id="saveSettings" style="margin-top:14px;">Save contest settings</button>
     </div>
 
@@ -2976,6 +3019,39 @@ async function renderAdmin(body){
     </div>
   `;
 
+  // Live preview of the actual per-week prize amount, using this contest's
+  // real entry fee/percentages/approved-entrant count (same formula as the
+  // Prizes tab) plus whatever sponsor amount is currently typed in -- this
+  // is exactly where "Weekly prize" used to read as ambiguous (a per-week
+  // amount vs. the total split across weeks); showing the real per-week
+  // number live, right here, removes the ambiguity instead of just
+  // explaining it in words.
+  const updateSponsorWeeklyPreview = () => {
+    const wpewRaw = parseInt(document.getElementById('s_wpew').value);
+    const weeks = (wpewRaw && wpewRaw >= contestStartWeek) ? (wpewRaw - contestStartWeek + 1) : null;
+    const sponsorWeekly = parseFloat(document.getElementById('s_sponsorWeekly').value) || 0;
+    let poolWeekly = 0;
+    if(!isFree){
+      const fee = parseFloat(document.getElementById('s_fee').value) || 0;
+      const weekPct = parseFloat(document.getElementById('s_week').value) || 0;
+      poolWeekly = fee * (approvedCount || 0) * weekPct / 100;
+    }
+    const totalWeekly = poolWeekly + sponsorWeekly;
+    const el = document.getElementById('s_sponsorWeeklyPreview');
+    if(!weeks || totalWeekly <= 0){ el.textContent = ''; return; }
+    const perWeek = totalWeekly / weeks;
+    el.textContent = isFree
+      ? `= ${fmtAmt(perWeek)} DGEN per week (weeks ${contestStartWeek}–${wpewRaw}, ${weeks} week${weeks === 1 ? '' : 's'})`
+      : `≈ ${fmtAmt(perWeek)} DGEN per week total (${fmtAmt(poolWeekly)} from the pool at today's ${approvedCount || 0} approved entrant${(approvedCount || 0) === 1 ? '' : 's'} + ${fmtAmt(sponsorWeekly)} sponsor bonus) — the pool portion grows as more players are approved.`;
+  };
+  document.getElementById('s_wpew').oninput = updateSponsorWeeklyPreview;
+  document.getElementById('s_sponsorWeekly').oninput = updateSponsorWeeklyPreview;
+  if(!isFree){
+    document.getElementById('s_fee').oninput = updateSponsorWeeklyPreview;
+    document.getElementById('s_week').oninput = updateSponsorWeeklyPreview;
+  }
+  updateSponsorWeeklyPreview();
+
   document.getElementById('toggleRegistrationBtn').onclick = guard(async () => {
     const { error } = await sb.rpc('commissioner_set_registration_open', { p_contest_id: currentContestId, p_open: !contestRow.registration_open });
     if(error){ showBanner(error.message); return; }
@@ -3000,28 +3076,28 @@ async function renderAdmin(body){
     if(!isEliminator){
       await sb.rpc('commissioner_update_weekly_threshold', { p_contest_id: currentContestId, p_threshold: parseFloat(document.getElementById('s_threshold').value) });
     }
-    const isFixed = contestRow.prize_mode === 'fixed';
-    const fixedWeeklyVal = isFixed ? (parseFloat(document.getElementById('s_fixedWeekly').value) || 0) : null;
+    const sponsorWeeklyVal = parseFloat(document.getElementById('s_sponsorWeekly').value) || 0;
     // Same rule as the Create Contest form: a weekly prize is in play for
-    // every Pool-mode contest, or a Fixed-mode contest with a nonzero
-    // weekly amount, and its "through week" value is a real NFL week
-    // number that has to fall within this contest's own start/end range
-    // (contestStartWeek/contestEndWeek, computed above from contest_weeks).
-    const wpewRequired = !isFixed || fixedWeeklyVal > 0;
+    // every Paid contest (the pool's weekly split defaults on), or a Free
+    // contest with a nonzero sponsor weekly amount, and its "through week"
+    // value is a real NFL week number that has to fall within this
+    // contest's own start/end range (contestStartWeek/contestEndWeek,
+    // computed above from contest_weeks).
+    const wpewRequired = !isFree || sponsorWeeklyVal > 0;
     const wpewRaw = parseInt(document.getElementById('s_wpew').value);
     if(wpewRequired && (!wpewRaw || wpewRaw < contestStartWeek || wpewRaw > contestEndWeek)){
-      showBanner(`Enter the NFL week (between ${contestStartWeek} and ${contestEndWeek}) a weekly prize should be paid through -- or set the weekly prize to 0 if this contest isn't offering one.`);
+      showBanner(`Enter the NFL week (between ${contestStartWeek} and ${contestEndWeek}) a weekly prize should be paid through -- or clear the sponsor weekly amount if this contest isn't offering one.`);
       return;
     }
     await sb.rpc('commissioner_update_prize_settings', {
       p_contest_id: currentContestId,
-      p_entry_fee: parseFloat(document.getElementById('s_fee').value) || null,
-      p_organizer_pct: isFixed ? contestRow.organizer_pct : parseFloat(document.getElementById('s_org').value),
-      p_weekly_pct: isFixed ? contestRow.weekly_pct : parseFloat(document.getElementById('s_week').value),
-      p_grand_pct: isFixed ? contestRow.grand_pct : parseFloat(document.getElementById('s_grand').value),
+      p_entry_fee: isFree ? null : (parseFloat(document.getElementById('s_fee').value) || null),
+      p_organizer_pct: isFree ? contestRow.organizer_pct : parseFloat(document.getElementById('s_org').value),
+      p_weekly_pct: isFree ? contestRow.weekly_pct : parseFloat(document.getElementById('s_week').value),
+      p_grand_pct: isFree ? contestRow.grand_pct : parseFloat(document.getElementById('s_grand').value),
       p_weekly_prize_end_week: wpewRequired ? wpewRaw : null,
-      p_fixed_grand_prize: isFixed ? (parseFloat(document.getElementById('s_fixedGrand').value) || 0) : null,
-      p_fixed_weekly_prize: isFixed ? (parseFloat(document.getElementById('s_fixedWeekly').value) || 0) : null
+      p_sponsor_grand_prize: parseFloat(document.getElementById('s_sponsorGrand').value) || 0,
+      p_sponsor_weekly_prize: sponsorWeeklyVal
     });
     renderAdmin(body);
   });
