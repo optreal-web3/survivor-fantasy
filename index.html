@@ -1188,8 +1188,9 @@ function renderCreateContestForm(area){
         <label>Weekly point threshold to survive</label>
         <input id="cc_threshold" type="number" value="100"/>
       </div>
-      <label>Second-chance rebuy window (weeks from this contest's own start; 0 = not offered)</label>
+      <label>Second-chance rebuy window (0 = not offered)</label>
       <input id="cc_scWeeks" type="number" min="0" value="0"/>
+      <div class="note">Counts this contest's own weeks starting from 1, not real NFL week numbers and not added on top of the start week. Enter 3 to offer a rebuy to anyone eliminated in this contest's own week 1, 2, or 3 -- so a contest starting at real NFL week 5 would cover real weeks 5-7, not "starting week + 3" (real week 8).</div>
       <div class="note">Everything else uses this app's standard defaults, for now. The prize structure choice above is locked in for this contest's whole life (archive and start a new one to change it later), but the actual percentages or fixed amounts can still be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
       <div class="row" style="gap:8px;margin-top:12px;">
         <button class="small secondary" id="cc_cancel" style="flex:1;">Cancel</button>
@@ -1704,6 +1705,17 @@ async function renderHome(body){
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
   const isEliminator = contestRow?.game_type === 'eliminator';
+  // Second-chance rebuy status line shown on the Week recap card below (next to
+  // Threshold to advance / How you survive and the Scoring accordion) -- a quick
+  // contest-level fact independent of any one week, same spot the DK scoring
+  // reference already lives. Not offered at all when second_chance_window_weeks
+  // <= 0; once used it stays "Already used" for good (second_chance_used never
+  // resets -- see the contest_entries column comment).
+  const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
+  const scRebuyLabel = scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes');
+  const secondChanceStatHTML = `
+    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scRebuyLabel}</b></div>
+    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Can only be used if eliminated during this contest's first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
 
   let statusHTML = '';
   if(!currentEntry){
@@ -1725,7 +1737,8 @@ async function renderHome(body){
     // reinstate the player on its own. This is a one-time rebuy per
     // player per contest (second_chance_used is a boolean, not a
     // counter) -- decided, not something more uses will be added to.
-    const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
+    // (scWindowWeeks itself is computed once, above, for the recap card's
+    // own second-chance status line -- reused here rather than redone.)
     const scDeadlineWeek = currentEntry.eliminated_week + 1;
     const scWindowOpen = scWindowWeeks > 0 && !!currentWeek && currentWeek.week_number <= scDeadlineWeek;
     if(currentEntry.second_chance_requested_at){
@@ -1832,6 +1845,7 @@ async function renderHome(body){
           ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
           : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
         ${dkScoringHTML('recap')}
+        ${secondChanceStatHTML}
       </div>`;
   }
 
