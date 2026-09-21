@@ -1923,7 +1923,7 @@ async function renderHome(body){
         ${recapSlotsHTML}
         ${currentTotal !== null ? `
           <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
-          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates automatically as games end and finalized stats stream in. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
+          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates as games end and finalized stats stream in. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
         ` : ''}
         ${isEliminator
           ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
