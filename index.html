@@ -124,6 +124,16 @@
   .player-score-pickers{font-size:11.5px;color:var(--text-dim);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);line-height:1.4;}
   .scoreInput{width:64px;flex:0 0 auto;margin:0;padding:6px 8px;font-size:13px;text-align:right;}
   .est-pill{font-size:9.5px;padding:2px 7px;border-radius:5px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px;background:var(--pending-dim);color:var(--pending);border:1px solid var(--pending);flex:0 0 auto;}
+  /* Player Projections card (Picks tab): .proj-option is one High/Mid/Low
+     (or KnightFall's single best) block -- title+total on one line, then a
+     single wrapped paragraph of "SLOT Name" entries rather than a row per
+     slot, to keep the whole card from running long on mobile. .proj-tag is
+     the small inline "X.X proj." badge shown next to a name in search
+     results. */
+  .proj-option{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:8px;}
+  .proj-option-title{font-weight:700;color:var(--text);font-size:13.5px;}
+  .proj-option-roster{margin-top:4px;font-size:12.5px;color:var(--text-dim);line-height:1.5;}
+  .proj-tag{font-size:11px;font-weight:700;color:var(--text-dim);white-space:nowrap;}
   /* Week-status pill (Contest Home's "Week N" heading): Live/Final, built on --caution/
      --alive the same way the Standings status pills are, and deliberately NOT on --purple/
      --pending -- those two are the only vars applyThemeAccent()/flair re-theming ever
@@ -223,6 +233,16 @@ let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPla
 // variable since renderHome() and the scoreboard's week badge read it directly.
 let recentWeekNumbers = [], recapWeekIndex = -1, recentWeekNumber = null, recentWeekPicks = [], recentWeekRow = null, recentWeekClosesAt = null;
 let weekGamesMap = {};
+// weekProjections: nfl_player_id -> blended projected DK score for
+// currentWeek (from week_player_projections, populated by the
+// sync-projections Edge Function -- see supabase-setup.md's "Player
+// Projections" section). Global/shared data, entrant-agnostic -- loaded
+// once per contest visit in loadContestData() below, same as
+// weekGamesMap. projectionsUpdatedAt is the freshest updated_at across
+// those rows, shown on the Player Projections card so a stale pull (the
+// source down for a while) is visible rather than silently trusted.
+let weekProjections = {};
+let projectionsUpdatedAt = null;
 let finalizedWeekNumbers = []; // ascending list of week_numbers finalized in the CURRENT contest
 // The most recent NOT-yet-finalized week (contest-wide, not player-specific) whose real FIRST
 // kickoff has already passed -- i.e. the week currently being played out / scored live, if any.
@@ -685,6 +705,22 @@ async function loadWeekGames(){
   weekGamesMap = {};
   (data||[]).forEach(g => weekGamesMap[g.team] = g.kickoff_at);
 }
+// See weekProjections above -- this is the only place that table gets
+// read from. Missing entirely (not yet computed by sync-projections this
+// week, or the week just opened) is a normal, expected state, not an
+// error -- the Player Projections card and search results both just show
+// nothing for a player with no entry here.
+async function loadWeekProjections(){
+  if(!currentWeek){ weekProjections = {}; projectionsUpdatedAt = null; return; }
+  const { data } = await sb.from('week_player_projections')
+    .select('nfl_player_id, projected_score, updated_at').eq('week_number', currentWeek.week_number);
+  weekProjections = {};
+  projectionsUpdatedAt = null;
+  (data||[]).forEach(r => {
+    weekProjections[r.nfl_player_id] = Number(r.projected_score);
+    if(!projectionsUpdatedAt || new Date(r.updated_at) > new Date(projectionsUpdatedAt)) projectionsUpdatedAt = r.updated_at;
+  });
+}
 // Contest Home's "recap" needs every week the player has picks in *within this contest*
 // that has actually STARTED -- its real FIRST kickoff already passed -- independent of
 // currentWeek. Gating on "has started", not just "has a pick", is what stops the card from
@@ -847,7 +883,7 @@ function weekTopPlayersListHTML(top5){
 async function loadContestData(){
   adminScoreWeek = null; // re-derive fresh (defaulting to the oldest unfinalized week) each time a contest is (re-)entered
   await Promise.all([loadCurrentContest(), refreshCurrentEntry(), loadCurrentWeek()]);
-  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadRecentWeek(), loadFinalizedWeeks()]);
+  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadWeekProjections(), loadRecentWeek(), loadFinalizedWeeks()]);
 }
 
 // ---------- AUTH ----------
@@ -1913,6 +1949,215 @@ function wireRecapCard(body){
 
 // Picks is the action tab: building/locking this week's lineup within the
 // current contest.
+async function loadLineupCandidates(reuseAllowed){
+  const positions = [...new Set(lineupSlots.map(s => s.position))];
+  const byPosition = {};
+  positions.forEach(pos => byPosition[pos] = []);
+  if(!positions.length || !currentWeek) return byPosition;
+  const { data } = await sb.from('nfl_players').select('id, full_name, team, position')
+    .in('position', positions).eq('active', true);
+  const now = Date.now();
+  (data || []).forEach(p => {
+    if(!reuseAllowed && usedPlayerIds.has(p.id)) return;
+    const kickoff = weekGamesMap[p.team];
+    if(!kickoff || new Date(kickoff).getTime() <= now) return;
+    const proj = weekProjections[p.id];
+    if(proj === undefined) return; // no projection this week -- left out of lineup building
+    byPosition[p.position].push({ id: p.id, full_name: p.full_name, team: p.team, projected_score: proj });
+  });
+  Object.values(byPosition).forEach(list => list.sort((a,b) => b.projected_score - a.projected_score));
+  return byPosition;
+}
+
+// Highest Score Projection: the single best available player per slot --
+// no target-seeking needed, just the top of each position's sorted list,
+// one per slot in lineupSlots order (so two RB slots naturally get the
+// top two RBs). Used for both game modes.
+function buildHighestLineup(byPosition){
+  const takenIdx = {};
+  const chosen = lineupSlots.map(slot => {
+    const list = byPosition[slot.position] || [];
+    const idx = takenIdx[slot.position] || 0;
+    takenIdx[slot.position] = idx + 1;
+    return { slot: slot.slot, position: slot.position, player: list[idx] || null };
+  });
+  const complete = chosen.every(c => c.player);
+  const total = chosen.reduce((sum,c) => sum + (c.player ? c.player.projected_score : 0), 0);
+  return { chosen, total, complete };
+}
+
+// Shared target-seeking routine behind Kingmaker's Mid and Low outputs.
+// Exact search, not a heuristic -- replaces two failed attempts at a
+// step-by-step greedy (one that could get permanently stuck after
+// overshooting, one that could cycle back and forth forever without
+// progress -- see chat history/commit log if either ever needs revisiting).
+// For each position, enumerates every real contiguous "best N of these"
+// combination and its total (e.g. 2 RB slots with 5 candidates has exactly
+// 4 possible pairs: ranks [0,1], [1,2], [2,3], [3,4]) capped to each
+// position's top TARGET_SEARCH_CANDIDATE_CAP candidates -- a target lineup
+// never has a real reason to reach deeper than that, since anything past
+// the top ~20 at a position is far enough below the best available that it
+// essentially never wins a "clear this threshold" or "closest to this
+// number" comparison anyway. Then takes the full cartesian product across
+// positions (a handful of positions x a bounded handful of windows each is
+// at most a few hundred thousand plain additions -- trivial, not a
+// performance risk even on a full slate) and picks whichever REAL
+// combination actually wins: cheapest that clears target ('atLeast'), or
+// nearest to target from either side ('closest').
+const TARGET_SEARCH_CANDIDATE_CAP = 20;
+function buildTargetLineup(byPosition, target, mode){
+  const positions = [...new Set(lineupSlots.map(s => s.position))];
+  const counts = {};
+  lineupSlots.forEach(s => counts[s.position] = (counts[s.position]||0) + 1);
+
+  const perPosition = positions.map(pos => {
+    const list = (byPosition[pos] || []).slice(0, TARGET_SEARCH_CANDIDATE_CAP);
+    const n = counts[pos];
+    if(list.length < n) return null; // not enough candidates to fill this position at all
+    const windows = [];
+    for(let start = 0; start + n <= list.length; start++){
+      const players = list.slice(start, start + n);
+      windows.push({ players, sum: players.reduce((s,p) => s + p.projected_score, 0) });
+    }
+    return { position: pos, windows };
+  });
+  if(perPosition.some(p => p === null)) return { chosen: null, total: null, reachable: false };
+
+  let combos = [{ total: 0, byPos: {} }];
+  for(const p of perPosition){
+    const next = [];
+    for(const c of combos){
+      for(const w of p.windows){
+        next.push({ total: c.total + w.sum, byPos: { ...c.byPos, [p.position]: w.players } });
+      }
+    }
+    combos = next;
+  }
+
+  let best = null;
+  for(const c of combos){
+    if(mode === 'atLeast' && c.total < target) continue;
+    if(!best) { best = c; continue; }
+    const better = mode === 'atLeast' ? (c.total < best.total) : (Math.abs(target - c.total) < Math.abs(target - best.total));
+    if(better) best = c;
+  }
+  if(!best){
+    const bestPossible = combos.reduce((m,c) => Math.max(m, c.total), -Infinity);
+    return { chosen: null, total: bestPossible, reachable: false }; // atLeast only -- nothing clears target
+  }
+
+  const takenIdx = {};
+  const chosen = lineupSlots.map(slot => {
+    const idx = takenIdx[slot.position] || 0;
+    takenIdx[slot.position] = idx + 1;
+    return { slot: slot.slot, position: slot.position, player: best.byPos[slot.position][idx] };
+  });
+  return { chosen, total: best.total, reachable: true };
+}
+
+const PROJECTIONS_COLLAPSED_KEY = 'dkg_projExpanded';
+// Deliberately the opposite default from Game Modes' accordion (which
+// starts expanded) -- this card's content is data-heavy and re-derived
+// every visit, not a one-time rules read, so it defaults CLOSED and only
+// stays open across visits once someone's actually opened it once. Stores
+// "expanded" (not "collapsed") so an absent/missing key means closed.
+function loadProjCollapsed(){
+  try { return localStorage.getItem(PROJECTIONS_COLLAPSED_KEY) !== '1'; } catch(e){ return true; }
+}
+function saveProjCollapsed(collapsed){
+  try {
+    if(collapsed) localStorage.removeItem(PROJECTIONS_COLLAPSED_KEY);
+    else localStorage.setItem(PROJECTIONS_COLLAPSED_KEY, '1');
+  } catch(e){ /* localStorage unavailable -- just won't persist, not fatal */ }
+}
+function lineupRosterLine(chosen){
+  return chosen.map(c => c.player ? `${esc(c.slot)} ${esc(c.player.full_name)}` : `${esc(c.slot)} —`).join(', ');
+}
+// One compact line per option (roster names + a single total) rather than
+// one line per slot -- 3 options at 7-8 lines each was taking up a full
+// mobile screen before anyone even looked at their own lineup.
+function projectionsOptionHTML(title, chosen, total){
+  return `<div class="proj-option">
+    <div class="proj-option-title">${esc(title)} <span style="float:right;">${fmtPts(total)} pts</span></div>
+    <p class="proj-option-roster">${lineupRosterLine(chosen)}</p>
+  </div>`;
+}
+// Kingmaker Gauntlet: High/Mid/Low, all built from the same candidate pool.
+// Low targets this contest's own weekly_threshold + a small cushion (not a
+// hardcoded number) so it stays meaningful if a commissioner sets a
+// different threshold. Mid targets the midpoint between High's actual total
+// and Low's target, and is skipped when that midpoint isn't meaningfully
+// below High (a thin, late-season player pool) rather than showing a number
+// that doesn't mean anything.
+const PROJECTION_CUSHION = 5;
+function kingmakerProjectionsHTML(byPosition, threshold){
+  const high = buildHighestLineup(byPosition);
+  if(!high.complete){
+    return `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`;
+  }
+  const lowTarget = threshold + PROJECTION_CUSHION;
+  const low = buildTargetLineup(byPosition, lowTarget, 'atLeast');
+  const midTarget = (high.total + lowTarget) / 2;
+  const midMeaningful = low.reachable && midTarget < high.total - 0.5;
+  const mid = midMeaningful ? buildTargetLineup(byPosition, midTarget, 'closest') : null;
+  return `
+    ${projectionsOptionHTML('Highest Score Projection', high.chosen, high.total)}
+    ${mid && mid.chosen ? projectionsOptionHTML('Middle Ground', mid.chosen, mid.total) : ''}
+    ${low.reachable
+      ? projectionsOptionHTML(`Just Make the Cut (${lowTarget}+)`, low.chosen, low.total)
+      : `<div class="proj-option"><div class="proj-option-title">Just Make the Cut (${lowTarget}+)</div><p class="estimate-note">No available combination clears the threshold this week with who's left to pick from.</p></div>`}
+  `;
+}
+// KnightFall Guillotine: no fixed threshold, so no Mid/Low -- just the
+// single best lineup, plus a browsable list of the next-best options at
+// each position so there's still something to weigh beyond one number
+// (agreed alternative to a k-best-lineups search -- see chat).
+const PROJECTIONS_ALT_COUNT = 3;
+function knightfallProjectionsHTML(byPosition){
+  const high = buildHighestLineup(byPosition);
+  const positions = [...new Set(lineupSlots.map(s => s.position))];
+  const altHTML = positions.map(pos => {
+    const list = (byPosition[pos] || []).slice(0, PROJECTIONS_ALT_COUNT);
+    if(!list.length) return '';
+    const line = list.map(p => `${esc(p.full_name)} ${fmtPts(p.projected_score)}`).join(', ');
+    return `<div class="stat"><span>${esc(pos)}</span><span style="text-align:right;">${line}</span></div>`;
+  }).join('');
+  return `
+    ${high.complete ? projectionsOptionHTML('Highest Score Projection', high.chosen, high.total) : `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`}
+    <div style="color:var(--text);font-weight:700;font-size:13px;margin-top:8px;">Other strong options</div>
+    ${altHTML || '<p class="estimate-note">No other projected players available this week.</p>'}
+  `;
+}
+function projectionsCardHTML(freshBody, reuseAllowed){
+  const open = !loadProjCollapsed();
+  // Only ever states "aren't in yet" once, down in freshBody (see
+  // renderPicks) -- this used to also say it here in the blurb whenever
+  // projectionsUpdatedAt was empty, showing the same sentence twice. When
+  // there's real data, this still adds the "as of" freshness note; when
+  // there isn't, it just says nothing extra rather than repeating itself.
+  const updatedNote = projectionsUpdatedAt ? ` Projections as of ${ctTime(projectionsUpdatedAt)}.` : '';
+  const availabilityNote = reuseAllowed ? "" : " — any player you've already used in this contest won't appear";
+  return `
+    <div class="card">
+      <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Player Projections</div>
+      <div class="faq-a ${open ? 'open' : ''}" id="projBody">
+        <p>These are estimates, not guarantees. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. Every player listed here is available for you to pick${availabilityNote}.${esc(updatedNote)}</p>
+        ${freshBody}
+      </div>
+    </div>`;
+}
+function wireProjectionsCard(){
+  const toggle = document.getElementById('projToggle');
+  const panel = document.getElementById('projBody');
+  if(toggle && panel){
+    toggle.onclick = () => {
+      const nowOpen = panel.classList.toggle('open');
+      toggle.classList.toggle('open', nowOpen);
+      saveProjCollapsed(!nowOpen);
+    };
+  }
+}
+
 async function renderPicks(body){
   if(!currentWeek){
     body.innerHTML = `
@@ -1957,6 +2202,17 @@ async function renderPicks(body){
   // only gates the search results when that's off, so runSearch below
   // needs to know which mode this is.
   const reuseAllowed = contestRow && contestRow.unique_players_per_season === false;
+
+  // Player Projections card body -- built from the same reuseAllowed/
+  // usedPlayerIds/weekGamesMap this whole tab already uses, so "already
+  // used" and "already kicked off" mean exactly the same thing here as
+  // they do in the search box below. See the lineup-building functions
+  // above renderPicks for how each output is actually computed.
+  let projectionsBodyHTML = `<p class="estimate-note">Projections for this week aren't in yet — check back soon.</p>`;
+  if(Object.keys(weekProjections).length > 0){
+    const byPosition = await loadLineupCandidates(reuseAllowed);
+    projectionsBodyHTML = isEliminator ? knightfallProjectionsHTML(byPosition) : kingmakerProjectionsHTML(byPosition, threshold);
+  }
 
   const slotsHTML = lineupSlots.map(slot => {
     const pick = myPicks.find(p => p.slot === slot.slot);
@@ -2016,6 +2272,7 @@ async function renderPicks(body){
     </div>
     <div id="nameEditArea"></div>
     <div id="flairEditArea"></div>
+    ${projectionsCardHTML(projectionsBodyHTML, reuseAllowed)}
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
@@ -2045,6 +2302,7 @@ async function renderPicks(body){
   });
   wireNameEdit(body);
   wireFlairPicker(body);
+  wireProjectionsCard();
   wirePickHistoryAccordion();
 }
 
@@ -2067,8 +2325,15 @@ async function runSearch(slot, position, query, reuseAllowed){
   }
   resultsEl.innerHTML = options.map(p => {
     const color = isSameDayCT(p.kickoff) ? 'var(--elim)' : 'var(--alive)';
+    // weekProjections is already loaded for the whole tab (see
+    // loadWeekProjections) -- this is a lookup, not a query, so it adds no
+    // extra round trip. A player with no projection this week (thin
+    // coverage from the source, or a name Sleeper doesn't have) just shows
+    // no score rather than a blank/fake number.
+    const proj = weekProjections[p.id];
+    const projTag = proj !== undefined ? `<span class="proj-tag" title="Projected score">${fmtPts(proj)} proj.</span>` : '';
     return `<div class="result-item" data-id="${p.id}" data-name="${esc(p.full_name)}" data-team="${esc(p.team)}">
-      <span>${esc(p.full_name)} <span style="color:var(--text-dim)">(${esc(p.team)})</span></span>
+      <span>${esc(p.full_name)} <span style="color:var(--text-dim)">(${esc(p.team)})</span> ${projTag}</span>
       <span class="kickoff-tag" style="color:${color}">${ctTime(p.kickoff)}</span>
     </div>`;
   }).join('');
@@ -2424,7 +2689,7 @@ function renderLegend(body){
       <p>It began on a legendary late night of memecoin trading and vibe coding. Battle-hardened degens, tired of yield farms and rug-pulls, wanted to blend on-chain dopamine with real competition. Someone raised a frothy mug and joked: “What if we create our own innovative sports betting games and give rise to the kingdom’s Knights?”</p>
       <p>That joke became a mission. Loyal DGEN DAO members - builders, artists, strategists, and memelords - stepped up and founded Degen King Games (DKG) in the trenches of decentralized collaboration.</p>
       <p>At its heart sits the royal NFT Knights Collection: limited digital relics granting true virtual membership. Holders gain citizenship with exclusive access to private game modes, enhanced rewards, evolving utility, competition advantages, cosmetic flexes, and potential revenue shares - turning spectators into nobles of the realm.</p>
-      <p>DKG’s flagship game mode is the Survivor Fantasy Challenge, a sharp twist on fantasy football. Players face a high-stakes elimination gauntlet of brutal choices and upsets. Only the shrewdest and most resilient claim the crown and its spoils.</p>
+      <p>DKG’s flagship game mmode is the Survivor Fantasy Challenge, a sharp twist on fantasy football. Players face a high-stakes elimination gauntlet of brutal choices and upsets. Only the shrewdest and most resilient claim the crown and its spoils.</p>
       <p>Degen King Games is a living experiment in community-owned entertainment, where early believers become the architects, NFT holders the aristocracy, and every game shipped becomes another chapter in the DGEN DAO kingdom.</p>
       <div class="legend-quote">The crown is heavy. The beer is cold. The competition is real. Welcome to the realm.</div>
     </div>`;
