@@ -38,7 +38,6 @@
     --border:#262838;
     --bg-grad-end:#242424;
     --dgen:#8B5CF6; --dgen-dim:rgba(139,92,246,0.12);
-    --usdc:#00D1FF; --usdc-dim:rgba(0,209,255,0.12);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -74,7 +73,6 @@
   .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
   .pill.free{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
   .pill.dgen{background:var(--dgen-dim);color:var(--dgen);border-color:var(--dgen);}
-  .pill.usdc{background:var(--usdc-dim);color:var(--usdc);border-color:var(--usdc);}
   .sc-icon{width:13px;height:13px;color:var(--pending);vertical-align:-2px;flex:0 0 auto;}
   .bottom-nav{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
   @media (min-width:660px){ .bottom-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:12px 12px 0 0;bottom:0;} }
@@ -173,8 +171,8 @@
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
   .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
-  .footer-disclaimer{margin-top:10px;font-size:12px;color:var(--text-dim);line-height:1.4;}
-  .footer-disclaimer .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-size:12px;font-weight:400;touch-action:manipulation;}
+  .footer-disclaimer{margin-top:6px;font-size:11px;color:var(--text-dim);line-height:1.4;}
+  .footer-disclaimer .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-size:11px;font-weight:400;touch-action:manipulation;}
   .hero-banner{position:relative;width:100%;height:10vh;height:clamp(55px,10dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;margin-bottom:14px;}
   .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
@@ -208,10 +206,6 @@ let session = null, profile = null;
 let contests = [];          // every non-draft contest, for the Hub list
 let myEntries = {};         // contest_id -> this player's contest_entries row (only contests they've joined)
 let currentContestId = null, currentContest = null, currentEntry = null;
-// Set true only by the footer "Disclaimers" link so renderFAQ knows to auto-expand
-// and scroll to the last FAQ item; reset after use so normal FAQ-tab visits (bottom
-// nav, etc.) land at the top with everything collapsed as usual.
-let jumpToDisclaimersFaq = false;
 let currentWeek = null, lineupSlots = [], myPicks = [], myAllPicks = [], usedPlayerIds = new Set();
 // recentWeekNumbers: every week (ascending, oldest first) the player has picks in within this
 // contest whose real FIRST kickoff has already passed -- i.e. every week there's actually
@@ -257,17 +251,19 @@ function clearBanner(){ clearTimeout(bannerTimeout); bannerTimeout = null; banne
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
 
-// Currency helpers: entry fees/prizes are always one of Free, USDC, or
-// DGEN -- no dollar signs anywhere. currencyForContest()
+// Currency helpers: entry fees/prizes are always one of Free or DGEN --
+// no dollar signs, and deliberately no fiat-pegged currency option, since
+// DGEN has no set real-world value and that keeps the app clear of any
+// real-money implication. currencyForContest()
 // resolves the label a given contest should show (is_free wins over
 // whatever's stored in contests.currency, since "free" isn't itself a
 // stored currency value); currencyPillHTML() renders the small colored
-// pill (green/free, bright neon blue/USDC, purple/DGEN); fmtAmt() is the
-// plain numeric formatter (no currency symbol prefix -- the pill at the
-// top of a page carries that instead).
+// pill (green/free, purple/DGEN); fmtAmt() is the plain numeric formatter
+// (no currency symbol prefix -- the pill at the top of a page carries
+// that instead).
 function currencyForContest(c){
   if(!c) return 'free';
-  return c.is_free ? 'free' : (c.currency || 'usdc');
+  return c.is_free ? 'free' : (c.currency || 'dgen');
 }
 function currencyLabel(currency){
   return currency === 'free' ? 'FREE' : currency.toUpperCase();
@@ -322,7 +318,7 @@ function gameTypeLabel(gameType){
 // palette instead of full-color emoji.
 // prizes: a coin (circle) with a small sparkle/gem mark in the middle --
 // not a dollar sign, since entry fees and prizes are denominated in
-// USDC/DGEN, never dollars.
+// DGEN (or nothing, for a Free contest), never dollars.
 const ICON_PATHS = {
   home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.8V19a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V9.8"/><path d="M9.5 20v-6h5v6"/>',
   picks: '<g transform="rotate(-30 12 12)"><path d="M4 12c2-5 6-8 8-8s6 3 8 8c-2 5-6 8-8 8s-6-3-8-8Z"/><path d="M6.5 12h11"/><path d="M10 10.3v3.4"/><path d="M12 10v4"/><path d="M14 10.3v3.4"/></g>',
@@ -992,13 +988,13 @@ function renderHubShell(){
     <div class="footer-links">
       <button class="flink" id="signOutBtn">Logout</button>
     </div>
-    <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association. <span class="flink" id="disclaimersLinkHub">Disclaimers</span></div>
+    <div class="footer-contact">Questions or feedback? Contact Optreal in Discord or on X.</div>
+    <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association. <span class="flink" data-tab="faq">Legal</span></div>
     <nav class="bottom-nav">
       ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
     </nav>
   `;
   document.getElementById('signOutBtn').onclick = signOut;
-  document.getElementById('disclaimersLinkHub').onclick = () => { jumpToDisclaimersFaq = true; activeTab = 'faq'; render(); };
   document.querySelectorAll('[data-tab]').forEach(el => {
     el.onclick = () => { activeTab = el.dataset.tab; render(); };
   });
@@ -1119,12 +1115,23 @@ function renderCreateContestForm(area){
       <label>Entry</label>
       <select id="cc_currency">
         <option value="free">Free to Play</option>
-        <option value="usdc">Paid Entry USDC</option>
         <option value="dgen">Paid Entry DGEN</option>
       </select>
       <div id="cc_feeWrap" style="display:none;">
         <label id="cc_feeLabel">Entry fee</label>
         <input id="cc_fee" type="number" step="0.01" min="0" placeholder="e.g. 20"/>
+      </div>
+      <label>Prize structure</label>
+      <select id="cc_prizeMode">
+        <option value="pool">Pool split — grows with entry fees, split by %</option>
+        <option value="fixed">Fixed / sponsored amount — you set the exact prize(s)</option>
+      </select>
+      <div id="cc_fixedWrap" style="display:none;">
+        <label>Grand prize / Weekly prize (leave weekly at 0 if not offered)</label>
+        <div class="row">
+          <input id="cc_fixedGrand" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
+          <input id="cc_fixedWeekly" type="number" step="0.01" min="0" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
+        </div>
       </div>
       <label>Starts at week / Ends at week</label>
       <div class="row">
@@ -1138,7 +1145,7 @@ function renderCreateContestForm(area){
       </div>
       <label>Second-chance rebuy window (weeks from this contest's own start; 0 = not offered)</label>
       <input id="cc_scWeeks" type="number" min="0" value="0"/>
-      <div class="note">Everything else uses this app's standard defaults, for now. Prize split, however, can be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
+      <div class="note">Everything else uses this app's standard defaults, for now. The prize structure choice above is locked in for this contest's whole life (archive and start a new one to change it later), but the actual percentages or fixed amounts can still be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
       <div class="row" style="gap:8px;margin-top:12px;">
         <button class="small secondary" id="cc_cancel" style="flex:1;">Cancel</button>
         <button class="small" id="cc_create" style="flex:1;">Create contest</button>
@@ -1148,6 +1155,9 @@ function renderCreateContestForm(area){
     const val = e.target.value;
     document.getElementById('cc_feeWrap').style.display = val === 'free' ? 'none' : 'block';
     document.getElementById('cc_feeLabel').textContent = `Entry fee (${val.toUpperCase()})`;
+  };
+  document.getElementById('cc_prizeMode').onchange = (e) => {
+    document.getElementById('cc_fixedWrap').style.display = e.target.value === 'fixed' ? 'block' : 'none';
   };
   // Eliminator-only fields (player-reuse toggle) and Survivor-only fields
   // (weekly threshold) show/hide based on the game-mode pick -- both are
@@ -1176,6 +1186,9 @@ function renderCreateContestForm(area){
     const currencyVal = document.getElementById('cc_currency').value;
     const isFree = currencyVal === 'free';
     const fee = isFree ? null : (parseFloat(document.getElementById('cc_fee').value) || null);
+    const prizeMode = document.getElementById('cc_prizeMode').value;
+    const fixedGrand = prizeMode === 'fixed' ? (parseFloat(document.getElementById('cc_fixedGrand').value) || 0) : null;
+    const fixedWeekly = prizeMode === 'fixed' ? (parseFloat(document.getElementById('cc_fixedWeekly').value) || 0) : null;
     const threshold = parseFloat(document.getElementById('cc_threshold').value) || 100;
     const startWeek = parseInt(document.getElementById('cc_startWeek').value) || 1;
     const endWeek = parseInt(document.getElementById('cc_endWeek').value) || 18;
@@ -1192,8 +1205,11 @@ function renderCreateContestForm(area){
       p_second_chance_window_weeks: scWeeks,
       p_start_week: startWeek,
       p_end_week: endWeek,
-      p_currency: isFree ? 'usdc' : currencyVal,
-      p_unique_players_per_season: uniqueReuse
+      p_currency: 'dgen',
+      p_unique_players_per_season: uniqueReuse,
+      p_prize_mode: prizeMode,
+      p_fixed_grand_prize: fixedGrand,
+      p_fixed_weekly_prize: fixedWeekly
     });
     if(error){ showBanner(error.message); return; }
     await Promise.all([loadContests(), loadMyEntries()]);
@@ -1499,16 +1515,17 @@ function renderContestShell(){
       ${footerTabs.map(([id,label]) => `<span class="flink" data-tab="${id}">${label}</span>`).join('')}
       <button class="flink" id="signOutBtn">Logout</button>
     </div>
-    <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association. <span class="flink" id="disclaimersLinkContest">Disclaimers</span></div>
+    <div class="footer-contact">Questions or feedback? Contact Optreal in Discord or on X.</div>
+    <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association. <span class="flink" id="legalLink">Legal</span></div>
     <nav class="bottom-nav">
       ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
     </nav>
   `;
   document.getElementById('signOutBtn').onclick = signOut;
   document.getElementById('backToHubBtn').onclick = () => { currentContestId = null; activeTab = 'hub'; render(); };
-  // Disclaimers link jumps back to the Hub's FAQ tab (this shell has no FAQ tab of
+  // Legal link jumps back to the Hub's FAQ tab (this shell has no FAQ tab of
   // its own), unlike the other data-tab links here which stay within this shell.
-  document.getElementById('disclaimersLinkContest').onclick = () => { jumpToDisclaimersFaq = true; currentContestId = null; activeTab = 'faq'; render(); };
+  document.getElementById('legalLink').onclick = () => { currentContestId = null; activeTab = 'faq'; render(); };
   document.querySelectorAll('[data-tab]').forEach(el => {
     el.onclick = () => { activeTab = el.dataset.tab; render(); };
   });
@@ -2159,19 +2176,44 @@ async function renderPrizes(body){
   ]);
   currentContest = contestRow;
   const currency = currencyForContest(contestRow);
+  const isFixed = contestRow.prize_mode === 'fixed';
   const fee = contestRow.entry_fee || 0;
-  const total = fee * ((count || 0) + (secondChanceCount || 0));
-  const organizer = total * contestRow.organizer_pct / 100;
-  const weekly = total * contestRow.weekly_pct / 100;
-  const grand = total * contestRow.grand_pct / 100;
   const weeks = contestRow.weekly_prize_end_week || 1;
-  const perWeek = weekly / weeks;
   const survivors = aliveCount || 0;
+
+  // Fixed-mode contests skip the entry-fee/percentage pool math entirely --
+  // the commissioner (or a sponsor) set the exact grand/weekly amounts
+  // directly, independent of turnout, and there's no organizer cut to show
+  // since nothing is being taken out of an entry-fee pool. Pool-mode
+  // contests keep the original percentage-of-total-pool math unchanged.
+  let grand, weekly, total, organizer;
+  if(isFixed){
+    grand = contestRow.fixed_grand_prize || 0;
+    weekly = contestRow.fixed_weekly_prize || 0;
+  } else {
+    total = fee * ((count || 0) + (secondChanceCount || 0));
+    organizer = total * contestRow.organizer_pct / 100;
+    weekly = total * contestRow.weekly_pct / 100;
+    grand = total * contestRow.grand_pct / 100;
+  }
+  const perWeek = weekly / weeks;
   const perSurvivor = survivors > 0 ? grand / survivors : 0;
 
   body.innerHTML = `
     <div class="card">
       <h3>Prize pool</h3>
+      ${isFixed ? `
+      <div class="note">This contest's prizes are a fixed, sponsored amount — not tied to entry fees or how many people join.</div>
+      ${fee ? `<div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fmtAmt(fee)}</b></div>` : ''}
+      <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
+      <div class="divider"></div>
+      <div class="stat"><span>Grand prize</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fmtAmt(grand)}</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${fmtAmt(perSurvivor)} each` : '—'}</b></div>
+      ${weekly ? `
+      <div class="stat"><span>Weekly prizes</span><b>${fmtAmt(weekly)} total</b></div>
+      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${fmtAmt(perWeek)}</b></div>
+      <div class="note">Weekly prizes are paid weeks 1 through ${weeks}.</div>` : ''}
+      <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>` : `
       <div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${currencyPillHTML(currency)}${fee ? fmtAmt(fee) : (currency === 'free' ? '' : '—')}</b></div>
       <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
       ${secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
@@ -2183,7 +2225,7 @@ async function renderPrizes(body){
       <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks 1–${weeks}</span><b>${fmtAmt(perWeek)}</b></div>
       <div class="note">Weekly prizes are paid weeks 1 through ${weeks}. Totals update automatically as more players are approved.</div>
       <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
-      <div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.</div>
+      <div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.</div>`}
     </div>
     <div class="card">
       <h3>Weekly high score history</h3>
@@ -2277,20 +2319,6 @@ function renderFAQ(body){
       el.classList.toggle('open', open);
     };
   });
-  // Only when the visit came from the footer "Disclaimers" link: open the last
-  // item (the disclaimers entry) and scroll it into view. Ordinary visits to
-  // this tab (bottom nav, etc.) land at the top with everything collapsed.
-  if(jumpToDisclaimersFaq){
-    jumpToDisclaimersFaq = false;
-    const lastIdx = items.length - 1;
-    const lastQ = document.querySelector(`.faq-q[data-i="${lastIdx}"]`);
-    const lastA = document.getElementById(`faq-a-${lastIdx}`);
-    if(lastQ && lastA){
-      lastQ.classList.add('open');
-      lastA.classList.add('open');
-      lastQ.scrollIntoView({ block: 'start' });
-    }
-  }
 }
 
 function renderLegend(body){
@@ -2436,12 +2464,7 @@ async function renderAdmin(body){
 
     <div class="card">
       <h3>Contest settings</h3>
-      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''} — sport, game mode, weeks, and player-reuse are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
-      <label>Contest Currency</label>
-      <select id="s_currency">
-        <option value="usdc" ${contestRow.currency === 'usdc' ? 'selected' : ''}>USDC</option>
-        <option value="dgen" ${contestRow.currency === 'dgen' ? 'selected' : ''}>DGEN</option>
-      </select>
+      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''}${contestRow.prize_mode === 'fixed' ? ' · fixed/sponsored prizes' : ''} — sport, game mode, weeks, player-reuse, and prize structure (pool vs. fixed) are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
       ${isEliminator ? '' : `
       <label>Weekly point threshold / Weekly prizes through week</label>
       <div class="row">
@@ -2451,13 +2474,21 @@ async function renderAdmin(body){
       ${isEliminator ? `
       <label>Weekly prizes through week</label>
       <input id="s_wpew" type="number" value="${contestRow.weekly_prize_end_week ?? ''}" placeholder="Through wk"/>` : ''}
+      ${contestRow.prize_mode === 'fixed' ? `
+      <label>Entry fee (optional — informational only; prizes below don't depend on it)</label>
+      <input id="s_fee" type="number" step="0.01" value="${contestRow.entry_fee ?? ''}" placeholder="Fee"/>
+      <label>Grand prize / Weekly prize</label>
+      <div class="row">
+        <input id="s_fixedGrand" type="number" step="0.01" value="${contestRow.fixed_grand_prize ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Grand prize"/>
+        <input id="s_fixedWeekly" type="number" step="0.01" value="${contestRow.fixed_weekly_prize ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
+      </div>` : `
       <label>Entry fee / Grand % / Weekly % / Organizer %</label>
       <div class="row">
         <input id="s_fee" type="number" step="0.01" value="${contestRow.entry_fee ?? ''}" style="width:auto;flex:1;min-width:0;" placeholder="Fee"/>
         <input id="s_grand" type="number" value="${contestRow.grand_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Grand %"/>
         <input id="s_week" type="number" value="${contestRow.weekly_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly %"/>
         <input id="s_org" type="number" value="${contestRow.organizer_pct}" style="width:auto;flex:1;min-width:0;" placeholder="Organizer %"/>
-      </div>
+      </div>`}
       <button id="saveSettings" style="margin-top:14px;">Save contest settings</button>
     </div>
 
@@ -2541,14 +2572,16 @@ async function renderAdmin(body){
     if(!isEliminator){
       await sb.rpc('commissioner_update_weekly_threshold', { p_contest_id: currentContestId, p_threshold: parseFloat(document.getElementById('s_threshold').value) });
     }
-    await sb.rpc('commissioner_update_currency', { p_contest_id: currentContestId, p_currency: document.getElementById('s_currency').value });
+    const isFixed = contestRow.prize_mode === 'fixed';
     await sb.rpc('commissioner_update_prize_settings', {
       p_contest_id: currentContestId,
       p_entry_fee: parseFloat(document.getElementById('s_fee').value) || null,
-      p_organizer_pct: parseFloat(document.getElementById('s_org').value),
-      p_weekly_pct: parseFloat(document.getElementById('s_week').value),
-      p_grand_pct: parseFloat(document.getElementById('s_grand').value),
-      p_weekly_prize_end_week: parseInt(document.getElementById('s_wpew').value) || null
+      p_organizer_pct: isFixed ? contestRow.organizer_pct : parseFloat(document.getElementById('s_org').value),
+      p_weekly_pct: isFixed ? contestRow.weekly_pct : parseFloat(document.getElementById('s_week').value),
+      p_grand_pct: isFixed ? contestRow.grand_pct : parseFloat(document.getElementById('s_grand').value),
+      p_weekly_prize_end_week: parseInt(document.getElementById('s_wpew').value) || null,
+      p_fixed_grand_prize: isFixed ? (parseFloat(document.getElementById('s_fixedGrand').value) || 0) : null,
+      p_fixed_weekly_prize: isFixed ? (parseFloat(document.getElementById('s_fixedWeekly').value) || 0) : null
     });
     renderAdmin(body);
   });
