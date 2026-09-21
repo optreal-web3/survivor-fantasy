@@ -2242,9 +2242,9 @@ function projectionsCardHTML(freshBody, reuseAllowed){
   const availabilityNote = reuseAllowed ? "" : " — any player you've already used in this contest won't appear";
   return `
     <div class="card">
-      <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Player Projections</div>
+      <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Available Player Projections</div>
       <div class="faq-a ${open ? 'open' : ''}" id="projBody">
-        <p>These are estimates, not guarantees. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. Every player listed here is available for you to pick${availabilityNote}.${esc(updatedNote)}</p>
+        <p>These are estimates, not guarantees, of projected player stats polled from different sites with DK scoring math applied. Any player you've already used in this contest won't appear.${esc(updatedNote)}</p>
         ${freshBody}
       </div>
     </div>`;
