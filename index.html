@@ -37,7 +37,6 @@
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
     --bg-grad-end:#242424;
-    --dgen:#8B5CF6; --dgen-dim:rgba(139,92,246,0.12);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -71,8 +70,6 @@
   .pill.elim{background:var(--elim-dim);color:var(--elim);border-color:var(--elim);}
   .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
   .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
-  .pill.free{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
-  .pill.dgen{background:var(--dgen-dim);color:var(--dgen);border-color:var(--dgen);}
   .sc-icon{width:13px;height:13px;color:var(--pending);vertical-align:-2px;flex:0 0 auto;}
   .bottom-nav{position:fixed;left:0;right:0;bottom:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:50;}
   @media (min-width:660px){ .bottom-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:12px 12px 0 0;bottom:0;} }
@@ -280,25 +277,22 @@ function clearBanner(){ clearTimeout(bannerTimeout); bannerTimeout = null; banne
 function esc(s){ const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
 function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ showBanner(e.message || String(e)); } }; }
 
-// Currency helpers: entry fees/prizes are always one of Free or DGEN --
-// no dollar signs, and deliberately no fiat-pegged currency option, since
-// DGEN has no set real-world value and that keeps the app clear of any
-// real-money implication. currencyForContest()
-// resolves the label a given contest should show (is_free wins over
-// whatever's stored in contests.currency, since "free" isn't itself a
-// stored currency value); currencyPillHTML() renders the small colored
-// pill (green/free, purple/DGEN); fmtAmt() is the plain numeric formatter
-// (no currency symbol prefix -- the pill at the top of a page carries
-// that instead).
+// Currency helper: entry fees/prizes are always one of Free or DGEN -- no
+// dollar signs, and deliberately no fiat-pegged currency option, since DGEN
+// has no set real-world value and that keeps the app clear of any
+// real-money implication. currencyForContest() resolves which one a given
+// contest is (is_free wins over whatever's stored in contests.currency,
+// since "free" isn't itself a stored currency value) -- used where the
+// distinction still matters functionally (e.g. the Hub card's fee line).
+// There's no currency badge/pill anywhere in the UI: every amount is shown
+// as a plain number via fmtAmt() with no currency symbol or label, since
+// DGEN is the only currency contests are actually denominated in today --
+// a commissioner running an offline real-money contest just sets the entry
+// fee/prizes to whatever that amount is and players know it's dollars from
+// context, same as they'd know an unlabeled number is DGEN otherwise.
 function currencyForContest(c){
   if(!c) return 'free';
   return c.is_free ? 'free' : (c.currency || 'dgen');
-}
-function currencyLabel(currency){
-  return currency === 'free' ? 'FREE' : currency.toUpperCase();
-}
-function currencyPillHTML(currency){
-  return `<span class="pill ${currency}">${currencyLabel(currency)}</span>`;
 }
 function fmtAmt(n){
   return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -2242,9 +2236,9 @@ function projectionsCardHTML(freshBody, reuseAllowed){
   const availabilityNote = reuseAllowed ? "" : " — any player you've already used in this contest won't appear";
   return `
     <div class="card">
-      <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Available Player Projections</div>
+      <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Player Projections</div>
       <div class="faq-a ${open ? 'open' : ''}" id="projBody">
-        <p>These are estimates, not guarantees, of projected player stats polled from different sites with DK scoring math applied. Any player you've already used in this contest won't appear.${esc(updatedNote)}</p>
+        <p>These are estimates, not guarantees. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. Every player listed here is available for you to pick${availabilityNote}.${esc(updatedNote)}</p>
         ${freshBody}
       </div>
     </div>`;
@@ -2622,7 +2616,6 @@ async function renderPrizes(body){
     ])
   ]);
   currentContest = contestRow;
-  const currency = currencyForContest(contestRow);
   const isFree = contestRow.is_free;
   const fee = contestRow.entry_fee || 0;
   const contestStartWeek = firstWeekRow?.week_number || 1;
@@ -2649,24 +2642,20 @@ async function renderPrizes(body){
   const weekly = poolWeekly + sponsorWeekly;
   const perWeek = weekly / weeksPaidCount;
   const perSurvivor = survivors > 0 ? grand / survivors : 0;
-  // The currency pill next to an amount is only shown when that amount is
-  // actually nonzero -- a DGEN (or FREE) badge next to a $0 prize implies
-  // there's real money behind it when there isn't.
-  const pill = (amt) => amt > 0 ? currencyPillHTML(currency) : '';
   const hasSponsor = sponsorGrand > 0 || sponsorWeekly > 0;
 
   body.innerHTML = `
     <div class="card">
       <h3>Prize pool</h3>
       ${isFree ? `<div class="note">This is a free-to-play contest — any prizes here come entirely from a sponsor, not entry fees.</div>` : ''}
-      ${!isFree ? `<div class="stat"><span>Entry fee</span><b style="display:inline-flex;align-items:center;gap:6px;">${pill(fee)}${fee ? fmtAmt(fee) : '—'}</b></div>` : ''}
+      ${!isFree ? `<div class="stat"><span>Entry fee</span><b>${fee ? fmtAmt(fee) : '—'}</b></div>` : ''}
       <div class="stat"><span>Approved entrants</span><b>${count || 0}</b></div>
       ${!isFree && secondChanceCount ? `<div class="stat"><span>Second-chance buy-ins</span><b>${secondChanceCount}</b></div>` : ''}
       ${!isFree ? `<div class="stat"><span>Total pool</span><b>${fmtAmt(total)}</b></div>` : ''}
       <div class="divider"></div>
       ${!isFree ? `<div class="stat"><span>Grand prize pool (${contestRow.grand_pct}%)</span><b>${fmtAmt(poolGrand)}</b></div>` : ''}
       ${sponsorGrand ? `<div class="stat"><span>${isFree ? 'Sponsor grand prize' : '+ Sponsor bonus'}</span><b>${fmtAmt(sponsorGrand)}</b></div>` : ''}
-      <div class="stat"><span${(!isFree && sponsorGrand) ? ' style="font-weight:600;"' : ''}>${(!isFree && sponsorGrand) ? 'Total grand prize' : 'Grand prize'}</span><b style="display:inline-flex;align-items:center;gap:6px;">${pill(grand)}${fmtAmt(grand)}</b></div>
+      <div class="stat"><span${(!isFree && sponsorGrand) ? ' style="font-weight:600;"' : ''}>${(!isFree && sponsorGrand) ? 'Total grand prize' : 'Grand prize'}</span><b>${fmtAmt(grand)}</b></div>
       <div class="stat"><span>&nbsp;&nbsp;→ if the season ended today (${survivors} still alive)</span><b>${survivors > 0 ? `${fmtAmt(perSurvivor)} each` : '—'}</b></div>
       ${weekly ? `
       ${!isFree ? `<div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${fmtAmt(poolWeekly)} total</b></div>` : ''}
