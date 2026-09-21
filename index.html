@@ -210,6 +210,11 @@
 const SUPABASE_URL = 'https://caehjxogikaekpcrxcoo.supabase.co';
 const SUPABASE_KEY = 'sb_publishable__CUibPnjUkkg8LZ6B-ecFA_cY0TJp9P';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Opt out of the browser's own scroll-position auto-restore on reload -- it can fight
+// with the explicit scroll-to-top-on-tab-change in render() below (that function decides
+// scroll position on every screen/tab change, not whatever the browser guesses from
+// history after a refresh).
+try { history.scrollRestoration = 'manual'; } catch(e){ /* unsupported in some older browsers -- not fatal */ }
 
 // ---------- GLOBAL STATE ----------
 let session = null, profile = null;
@@ -886,6 +891,40 @@ async function loadContestData(){
   await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadWeekProjections(), loadRecentWeek(), loadFinalizedWeeks()]);
 }
 
+// ---------- NAV PERSISTENCE ----------
+// Keeps a page/tab reload from dumping the player back to the Hub. sessionStorage
+// (not localStorage) on purpose -- it survives an in-tab reload but clears once the tab
+// is actually closed, so this never resurrects a days-old contest/tab on a fresh visit.
+// Written on every render() (cheap: two small fields) and read back once, on load, by
+// restoreNavState() below.
+const NAV_STATE_KEY = 'dkg_navState';
+function saveNavState(){
+  try { sessionStorage.setItem(NAV_STATE_KEY, JSON.stringify({ contestId: currentContestId, tab: activeTab })); }
+  catch(e){ /* sessionStorage unavailable (e.g. private browsing) -- just won't persist, not fatal */ }
+}
+// Called once, right after loadAllData(), on both a fresh sign-in and a page reload
+// (myEntries is what gates this -- see below). Restores whichever contest/tab this
+// browser tab was on, so a refresh lands back where the player was instead of the Hub.
+async function restoreNavState(){
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem(NAV_STATE_KEY)); } catch(e){ return; }
+  if(!saved) return;
+  if(saved.contestId && myEntries[saved.contestId]){
+    // Only restore a contest the player actually has an entry in -- guards against a
+    // stale id left over from an archived/deleted contest, or (shared-device edge case)
+    // a different account's contest from earlier in this same browser tab.
+    currentContestId = saved.contestId;
+    activeTab = saved.tab || 'home';
+    await loadContestData();
+    // Admin is only ever a clickable link for a commissioner (see renderContestShell) --
+    // don't let a stale saved tab show it to someone whose admin rights changed since.
+    if(activeTab === 'admin' && !currentEntry?.is_commissioner) activeTab = 'home';
+  } else if(!saved.contestId && ['legend','faq','platformAdmin'].includes(saved.tab)){
+    activeTab = saved.tab;
+    if(activeTab === 'platformAdmin' && !profile?.is_platform_admin) activeTab = 'hub';
+  }
+}
+
 // ---------- AUTH ----------
 // Sign-in is a typed one-time code, not a clickable magic link -- a magic
 // link can be silently consumed by an email client's own "link preview"
@@ -926,13 +965,23 @@ async function signOut(){
 }
 
 // ---------- RENDER ----------
+// lastRenderKey tracks screen+contest+tab across calls so render() can tell "the player
+// switched screens/tabs" (scroll back to top, like a normal page nav would) apart from
+// "same screen re-rendered after some data changed" (e.g. a pick was saved -- scrolling
+// the player back to the top of the Picks tab mid-edit would be jarring, not helpful).
+let lastRenderKey = null;
 function render(){
+  const navKey = `${screen}:${currentContestId}:${activeTab}`;
+  const navChanged = navKey !== lastRenderKey;
+  lastRenderKey = navKey;
+  saveNavState();
   if(screen === 'loading'){ app.innerHTML = `<div class="center">Loading…</div>`; return; }
-  if(screen === 'auth'){ return renderAuth(); }
-  if(screen === 'app'){
-    if(currentContestId === null) return renderHubShell();
-    return renderContestShell();
+  if(screen === 'auth'){ renderAuth(); }
+  else if(screen === 'app'){
+    if(currentContestId === null) renderHubShell();
+    else renderContestShell();
   }
+  if(navChanged) window.scrollTo(0, 0);
 }
 
 function renderAuth(){
@@ -3111,6 +3160,7 @@ sb.auth.onAuthStateChange(async (event, s) => {
       lastLoadedUserId = s.user.id;
       currentContestId = null; activeTab = 'hub';
       await loadAllData();
+      await restoreNavState();
       screen = 'app';
       render();
     }
@@ -3128,6 +3178,7 @@ sb.auth.onAuthStateChange(async (event, s) => {
     lastLoadedUserId = existing.user.id;
     currentContestId = null; activeTab = 'hub';
     await loadAllData();
+    await restoreNavState(); // picks this tab back up where it left off, if a reload is what brought us here
     screen = 'app';
   } else {
     screen = 'auth';
