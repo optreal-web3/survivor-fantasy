@@ -111,6 +111,7 @@
   table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:400px;}
   th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--border);}
   th{color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;}
+  .scoring-table{min-width:0;}
   .scoring-table td:last-child, .scoring-table th:last-child{text-align:right;white-space:nowrap;}
   .scores-grid{display:grid;grid-template-columns:1fr;gap:10px;}
   @media (min-width:640px){ .scores-grid{grid-template-columns:1fr 1fr;} }
@@ -1750,7 +1751,7 @@ function renderPickHistoryHTML(){
   return `
     <div class="card">
       <h3>Your locked-in picks this contest</h3>
-      <p>Whoever's currently locked into each slot, week by week.${reuseAllowed ? ' This contest allows reusing the same player week to week, so this is just a record, not a lockout list.' : " Once a slot's player has kicked off, they're locked out for the rest of the contest — swapping away from someone before his kickoff doesn't count against you. (You can still use anyone here in a different contest)."} Keep this as your own record in case a pick's ever in question.</p>
+      <p>Below is a list of all the players you've selected, week by week, in this Contest. Keep this as your own reference in case a pick is ever in question.</p>
       ${positions.map(pos => `
         <div class="faq-item">
           <div class="faq-q history-q" data-pos="${pos}">${pos}</div>
@@ -1908,7 +1909,7 @@ async function renderHome(body){
     // small purple "Est." tags used elsewhere on this same card.
     const weekStatusPill = isFinal
       ? ' <span class="week-pill final" title="Finalized by the admin">Final</span>'
-      : ' <span class="week-pill live" title="Live and unofficial — updates as scores sync every 15 minutes, not final until the admin finalizes the week">Live</span>';
+      : ' <span class="week-pill live" title="Live and unofficial — updates automatically as games end and finalized stats stream in, not final until the admin finalizes the week">Live</span>';
 
     recapHTML = `
       <div class="card">
@@ -1922,7 +1923,7 @@ async function renderHome(body){
         ${recapSlotsHTML}
         ${currentTotal !== null ? `
           <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
-          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates automatically every 15 minutes during game days. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
+          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates automatically as games end and finalized stats stream in. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
         ` : ''}
         ${isEliminator
           ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
@@ -2233,12 +2234,11 @@ function projectionsCardHTML(freshBody, reuseAllowed){
   // there's real data, this still adds the "as of" freshness note; when
   // there isn't, it just says nothing extra rather than repeating itself.
   const updatedNote = projectionsUpdatedAt ? ` Projections as of ${ctTime(projectionsUpdatedAt)}.` : '';
-  const availabilityNote = reuseAllowed ? "" : " — any player you've already used in this contest won't appear";
   return `
     <div class="card">
       <div class="faq-q ${open ? 'open' : ''}" id="projToggle">Player Projections</div>
       <div class="faq-a ${open ? 'open' : ''}" id="projBody">
-        <p>These are estimates, not guarantees. Projected stats come from Sleeper's own player projections, run through this contest's DraftKings-style scoring. Every player listed here is available for you to pick${availabilityNote}.${esc(updatedNote)}</p>
+        <p>These are estimates, not guarantees, of projected player stats from online sources using DK's scoring math. All players listed are available for you to pick.${esc(updatedNote)}</p>
         ${freshBody}
       </div>
     </div>`;
@@ -2333,7 +2333,7 @@ async function renderPicks(body){
           <div class="slot-card">
             <div class="row"><span class="slot-label">${slot.slot}</span><span class="pill pending">EDITABLE</span></div>
             <p style="color:var(--text);margin-top:4px;">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim)">(${esc(pick.team)})</span></p>
-            <p class="estimate-note">You can swap this pick until ${ctTime(pickKickoff)} — ${esc(pick.nfl_player_name)}'s kickoff.</p>
+            <p class="estimate-note">You can swap this pick until ${ctTime(pickKickoff)}.</p>
             <input placeholder="Search ${slot.position} to swap..." class="slotSearch" data-slot="${slot.slot}" data-position="${slot.position}" autocomplete="off"/>
             <div class="results" id="results-${slot.slot}"></div>
             <button class="small secondary clearSlotBtn" data-slot="${esc(slot.slot)}" data-name="${esc(pick.nfl_player_name)}" style="margin-top:8px;width:100%;">Clear this pick</button>
@@ -2373,7 +2373,7 @@ async function renderPicks(body){
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
-      <div class="note">Each slot can be swapped — or cleared back to empty — as many times as you want, right up until whoever's currently in it kicks off — after that it locks for good. Slots are independent, so an early kickoff can lock one slot while the rest of your lineup stays open.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
+      <div class="note">Roster slots are editable up until that player's kickoff time. After that it locks and can't be changed. Team slots are independent from the final roster, adding some additional strategy.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
       ${lineupSlots.length > 0 ? (myPicks.length === lineupSlots.length
         ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team Roster Complete</span>'
         : '<span class="pill caution" style="margin-top:6px;display:inline-block;">Team Roster Incomplete</span>') : ''}
@@ -2579,7 +2579,7 @@ async function renderStandings(body){
 
   const liveNote = isLive ? `<p class="estimate-note">Week ${liveWeekNumber} is still in progress — totals update automatically as scores sync in.</p>` : '';
   const standingsDescription = isEliminator
-    ? 'Ranked by cumulative points. Each week, whoever has the lowest score(s) is cut — surviving is about not being at the bottom, not clearing a fixed number. Total points also break ties on the cut line.'
+    ? 'Players are ranked by cumulative total points across all weeks. Each week, whoever has the lowest score is cut. The cumulative total is also used for tie breakers on the cut line.'
     : "Ranked by cumulative points across all weeks players are Alive. Total points are irrelevant in this Contest format (Kingmaker Gauntlet) other than bragging rights.";
 
   body.innerHTML = `
@@ -2661,14 +2661,13 @@ async function renderPrizes(body){
       ${!isFree ? `<div class="stat"><span>Weekly prizes (${contestRow.weekly_pct}%)</span><b>${fmtAmt(poolWeekly)} total</b></div>` : ''}
       ${sponsorWeekly ? `<div class="stat"><span>${isFree ? 'Sponsor weekly prize' : '+ Sponsor weekly bonus'}</span><b>${fmtAmt(sponsorWeekly)} total</b></div>` : ''}
       <div class="stat"><span${(!isFree && sponsorWeekly) ? ' style="font-weight:600;"' : ''}>${(!isFree && sponsorWeekly) ? 'Total weekly prizes' : 'Weekly prizes'}</span><b>${fmtAmt(weekly)} total</b></div>
-      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks ${contestStartWeek}–${weeklyPrizeEndWeek}</span><b>${fmtAmt(perWeek)}</b></div>
-      <div class="note">Weekly prizes are paid weeks ${contestStartWeek} through ${weeklyPrizeEndWeek}.${!isFree ? ' Pool totals update automatically as more players are approved.' : ''}</div>` : `<div class="note">No weekly prize is offered for this contest.</div>`}
+      <div class="stat"><span>&nbsp;&nbsp;→ per week, weeks ${contestStartWeek}–${weeklyPrizeEndWeek}</span><b>${fmtAmt(perWeek)}</b></div>` : `<div class="note">No weekly prize is offered for this contest.</div>`}
       <div class="note">The grand prize pays 100% to whoever is still alive at the end — split evenly if more than one player survives to the finish.</div>
-      ${!isFree ? `<div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees (${fmtAmt(organizer)}) goes toward running this contest — hosting, tools, and the time spent operating it week to week.${hasSponsor ? ' The organizer cut only applies to entry fees, never to sponsor-contributed prize money.' : ''}</div>` : ''}
+      ${!isFree ? `<div class="note">For transparency: ${contestRow.organizer_pct}% of entry fees goes toward running this contest. The organizer fee only applies to paid contests, never to sponsor-contributed prize money.</div>` : ''}
     </div>
     <div class="card">
       <h3>Weekly high score history</h3>
-      <p>Top 5 scores for every finalized week in this contest — the reference for awarding weekly prizes.</p>
+      <p>Top 5 scores for every finalized week in this contest.</p>
       ${finalizedWeekNumbers.length ? finalizedWeekNumbers.slice().reverse().map(w => `
         <div class="faq-item">
           <div class="faq-q whs-q" data-week="${w}">Week ${w}</div>
