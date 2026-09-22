@@ -176,6 +176,18 @@
   .proj-option-title{font-weight:700;color:var(--text);font-size:13.5px;}
   .proj-option-roster{margin-top:4px;font-size:12.5px;color:var(--text-dim);line-height:1.5;}
   .proj-tag{font-size:11px;font-weight:700;color:var(--text-dim);white-space:nowrap;}
+  /* KnightFall's "Other strong options" row (one per position): position label left,
+     alternate names+scores right-justified on wide screens -- but right-justified text
+     that wraps onto multiple lines (a full position's worth of names on a narrow phone)
+     reads badly, so below 480px this drops to a stacked layout instead: position on its
+     own line, names below it, left-justified (matching how the text already wraps there,
+     just readable instead of ragged-right). */
+  .proj-alt-row{display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:14px;}
+  .proj-alt-row .proj-alt-names{text-align:right;}
+  @media (max-width:480px){
+    .proj-alt-row{flex-direction:column;gap:2px;}
+    .proj-alt-row .proj-alt-names{text-align:left;}
+  }
   /* Week-status pill (Contest Home's "Week N" heading): Live/Final, built on --caution/
      --alive the same way the Standings status pills are, and deliberately NOT on --purple/
      --pending -- those two are the only vars applyThemeAccent()/flair re-theming ever
@@ -2259,8 +2271,20 @@ function buildHighestLineup(byPosition){
 // performance risk even on a full slate) and picks whichever REAL
 // combination actually wins: cheapest that clears target ('atLeast'), or
 // nearest to target from either side ('closest').
+// A tie on that primary metric (a real tie -- two different windows landing
+// on the exact same total, not an epsilon fudge) is broken by avoidIds:
+// whichever tied combo reuses fewer players already shown in an earlier
+// Player Projections option wins, so High/Mid/Low tend to surface
+// different names instead of the same handful every time -- purely a
+// tie-break, never lets a worse-total combination win.
 const TARGET_SEARCH_CANDIDATE_CAP = 20;
-function buildTargetLineup(byPosition, target, mode){
+function comboOverlapCount(byPos, avoidIds){
+  if(!avoidIds || !avoidIds.size) return 0;
+  let n = 0;
+  Object.values(byPos).forEach(players => players.forEach(p => { if(avoidIds.has(p.id)) n++; }));
+  return n;
+}
+function buildTargetLineup(byPosition, target, mode, avoidIds){
   const positions = [...new Set(lineupSlots.map(s => s.position))];
   const counts = {};
   lineupSlots.forEach(s => counts[s.position] = (counts[s.position]||0) + 1);
@@ -2293,8 +2317,13 @@ function buildTargetLineup(byPosition, target, mode){
   for(const c of combos){
     if(mode === 'atLeast' && c.total < target) continue;
     if(!best) { best = c; continue; }
-    const better = mode === 'atLeast' ? (c.total < best.total) : (Math.abs(target - c.total) < Math.abs(target - best.total));
-    if(better) best = c;
+    const cMetric = mode === 'atLeast' ? c.total : Math.abs(target - c.total);
+    const bestMetric = mode === 'atLeast' ? best.total : Math.abs(target - best.total);
+    if(cMetric < bestMetric){
+      best = c;
+    } else if(cMetric === bestMetric && comboOverlapCount(c.byPos, avoidIds) < comboOverlapCount(best.byPos, avoidIds)){
+      best = c;
+    }
   }
   if(!best){
     const bestPossible = combos.reduce((m,c) => Math.max(m, c.total), -Infinity);
@@ -2350,13 +2379,19 @@ function kingmakerProjectionsHTML(byPosition, threshold){
   if(!high.complete){
     return `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`;
   }
+  const highIds = new Set(high.chosen.filter(c => c.player).map(c => c.player.id));
   const lowTarget = threshold + PROJECTION_CUSHION;
-  const low = buildTargetLineup(byPosition, lowTarget, 'atLeast');
+  const low = buildTargetLineup(byPosition, lowTarget, 'atLeast', highIds);
   const midTarget = (high.total + lowTarget) / 2;
   const midMeaningful = low.reachable && midTarget < high.total - 0.5;
-  const mid = midMeaningful ? buildTargetLineup(byPosition, midTarget, 'closest') : null;
+  // Mid steers away from whichever players High and Low already used (when a tie leaves
+  // room to choose), so all three options offer as many different players as the pool allows.
+  const midAvoidIds = low.reachable && low.chosen
+    ? new Set([...highIds, ...low.chosen.filter(c => c.player).map(c => c.player.id)])
+    : highIds;
+  const mid = midMeaningful ? buildTargetLineup(byPosition, midTarget, 'closest', midAvoidIds) : null;
   return `
-    ${projectionsOptionHTML('Highest Score Projection', high.chosen, high.total)}
+    ${projectionsOptionHTML('Highest Score Potential', high.chosen, high.total)}
     ${mid && mid.chosen ? projectionsOptionHTML('Middle Ground', mid.chosen, mid.total) : ''}
     ${low.reachable
       ? projectionsOptionHTML(`Just Make the Cut (${lowTarget}+)`, low.chosen, low.total)
@@ -2366,19 +2401,27 @@ function kingmakerProjectionsHTML(byPosition, threshold){
 // KnightFall Guillotine: no fixed threshold, so no Mid/Low -- just the
 // single best lineup, plus a browsable list of the next-best options at
 // each position so there's still something to weigh beyond one number
-// (agreed alternative to a k-best-lineups search -- see chat).
+// (agreed alternative to a k-best-lineups search -- see chat). The alt
+// list excludes whoever's already shown in the Highest Score Potential
+// lineup above it (so the two sections never repeat a name -- someone
+// reading both would otherwise wrongly assume "Other strong options"
+// ranks below the top group's own players, when really they're just not
+// re-listed) and shows each alternate's own projected score in
+// parentheses next to their name, so trimming the overlap doesn't cost
+// anyone the ability to compare expected values.
 const PROJECTIONS_ALT_COUNT = 3;
 function knightfallProjectionsHTML(byPosition){
   const high = buildHighestLineup(byPosition);
+  const usedIds = new Set(high.chosen.filter(c => c.player).map(c => c.player.id));
   const positions = [...new Set(lineupSlots.map(s => s.position))];
   const altHTML = positions.map(pos => {
-    const list = (byPosition[pos] || []).slice(0, PROJECTIONS_ALT_COUNT);
+    const list = (byPosition[pos] || []).filter(p => !usedIds.has(p.id)).slice(0, PROJECTIONS_ALT_COUNT);
     if(!list.length) return '';
-    const line = list.map(p => `${esc(p.full_name)} ${fmtPts(p.projected_score)}`).join(', ');
-    return `<div class="stat"><span>${esc(pos)}</span><span style="text-align:right;">${line}</span></div>`;
+    const line = list.map(p => `${esc(p.full_name)} (${fmtPts(p.projected_score)})`).join(', ');
+    return `<div class="proj-alt-row"><span>${esc(pos)}</span><span class="proj-alt-names">${line}</span></div>`;
   }).join('');
   return `
-    ${high.complete ? projectionsOptionHTML('Highest Score Projection', high.chosen, high.total) : `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`}
+    ${high.complete ? projectionsOptionHTML('Highest Score Potential', high.chosen, high.total) : `<p class="estimate-note">Not enough available, projected players left to fill every slot this week.</p>`}
     <div style="color:var(--text);font-weight:700;font-size:13px;margin-top:8px;">Other strong options</div>
     ${altHTML || '<p class="estimate-note">No other projected players available this week.</p>'}
   `;
