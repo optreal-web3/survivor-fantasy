@@ -1,0 +1,15 @@
+{
+  "name": "Degen King Games — Survivor Fantasy Challenge",
+  "short_name": "DKG Fantasy",
+  "description": "Build a weekly lineup and survive the elimination gauntlet.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0A0B12",
+  "theme_color": "#0A0B12",
+  "icons": [
+    { "src": "images/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "images/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "images/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
