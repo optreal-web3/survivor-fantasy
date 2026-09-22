@@ -244,10 +244,6 @@
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
   .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--purple);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--purple);background:var(--purple-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding-left:10px;padding-right:10px;padding-bottom:20px;} }
-  .back-link{background:rgba(var(--purple-rgb),0.1);border:1.5px solid var(--purple);color:var(--purple);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;animation:hubGlow 2.4s ease-in-out infinite;}
-  .back-link:active{transform:translateY(1px);}
-  @keyframes hubGlow{ 0%,100%{box-shadow:0 0 0 0 rgba(var(--purple-rgb),0.35);} 50%{box-shadow:0 0 10px 2px rgba(var(--purple-rgb),0.55);} }
-  .contest-title-row{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:nowrap;max-width:100%;}
 </style>
 </head>
 <body>
@@ -539,7 +535,7 @@ function hexToRgbTriplet(hex){
 }
 
 // Re-themes the app's accent color (buttons, section headers, the week
-// counter, FAQ toggle, back-link pill/glow, etc.) to the current flair
+// counter, FAQ toggle, etc.) to the current flair
 // team's secondary_hex, falling back to the original purple when no flair
 // is chosen. Deliberately independent of hero_logo_path/renderHeroBanner
 // -- every team already has a secondary_hex regardless of banner-image
@@ -1160,7 +1156,11 @@ function renderHubShell(){
   const bottomNavTabs = [
     ['lobby', tabIcon('lobby'), 'Lobby'], ['faq', tabIcon('faq'), 'FAQ'], ['legend', tabIcon('legend'), 'DKG']
   ];
-  if(profile?.is_platform_admin) bottomNavTabs.push(['platformAdmin', tabIcon('admin'), 'Platform Admin']);
+  // Display label only -- the routing key ('platformAdmin'), renderPlatformAdmin(),
+  // and every other internal reference keep the original name; only what players
+  // see changed (shorter, and matches what this tier actually is -- see "Global
+  // Admins" on the Platform Admin page itself).
+  if(profile?.is_platform_admin) bottomNavTabs.push(['platformAdmin', tabIcon('admin'), 'Global Admin']);
   if(!['lobby','legend','faq','platformAdmin'].includes(activeTab)) activeTab = 'lobby';
 
   document.getElementById('navMount').innerHTML = `
@@ -1823,9 +1823,10 @@ function renderContestShell(){
   // player's contests are homed, not a contest tab). Reference material + the account actions
   // that aren't wayfinding stay in the footer-links row further down the page instead -- keeps
   // the nav itself to a size that still fits comfortably on a narrow phone at a legible font size.
-  // Lobby is included here, not just left to the header's own back-link button, since that
-  // button scrolls away with the header once #navMount is stuck at the top -- players were
-  // losing track of how to back out of a contest with no persistent way back to the Lobby.
+  // Lobby is this nav's only way back out of a contest -- the header used to also carry its own
+  // "‹ Lobby" back-link pill next to the contest name, but that was dropped as redundant once
+  // this persistent Lobby tab existed, and it was eating into the room available for longer
+  // contest names before they had to truncate.
   // tabIcon('lobby') is deliberately not tabIcon('home') -- this row already has this contest's
   // own "Home" tab, and two house icons side by side with different labels would read as a
   // mistake rather than two different destinations.
@@ -1846,25 +1847,19 @@ function renderContestShell(){
   app.innerHTML = `
     <div class="app-header">
       <img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games">
-      <div style="max-width:100%;">
-        <div class="contest-title-row">
-          <h1 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc(currentContest?.name || 'Contest')}</h1>
-          <button class="back-link" id="backToLobbyBtn" type="button">‹ Lobby</button>
-        </div>
-      </div>
+      <h1 style="margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(currentContest?.name || 'Contest')}</h1>
     </div>
     <div id="tabBody"></div>
     <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association.</div>
     ${footerLinksRowHTML('disclaimersLinkContest', footerTabs)}
   `;
   document.getElementById('signOutBtn').onclick = signOut;
-  document.getElementById('backToLobbyBtn').onclick = () => { currentContestId = null; activeTab = 'lobby'; render(); };
   // Disclaimers link jumps back to the Lobby's FAQ tab (this shell has no FAQ tab of
   // its own), unlike the other data-tab links here which stay within this shell.
   document.getElementById('disclaimersLinkContest').onclick = () => { jumpToDisclaimersFaq = true; currentContestId = null; activeTab = 'faq'; render(); };
   // data-tab="lobby" (the nav item above) needs to actually leave this contest, not just
-  // switch activeTab within it -- same handling backToLobbyBtn already does, applied generically
-  // so this one delegation loop covers both.
+  // switch activeTab within it, so it's special-cased here rather than left to the generic
+  // activeTab assignment below.
   document.querySelectorAll('[data-tab]').forEach(el => {
     el.onclick = () => {
       if(el.dataset.tab === 'lobby') currentContestId = null;
@@ -1943,16 +1938,14 @@ async function renderHome(body){
   // spot the DK scoring reference already lives. Not offered at all when
   // second_chance_window_weeks <= 0; once used it stays "Already used" for good
   // (second_chance_used never resets -- see the contest_entries column comment) --
-  // this label never disappears, it just changes state.
+  // this label never disappears, it just changes state. The "only available during
+  // the first N weeks" qualifier is its own line below the stat row rather than folded
+  // into it -- only shown while it's still actionable information (offered, not yet used).
   const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
   const scRebuyLabel = scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes');
-  // The "(only available during first N weeks)" qualifier is folded into the same line
-  // instead of a separate paragraph below it -- only shown while it's still actionable
-  // information (offered, not yet used); once used or not offered it'd just be noise.
-  const scWindowNote = (scWindowWeeks > 0 && !currentEntry?.second_chance_used)
-    ? ` (only available during first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'})` : '';
   const secondChanceStatHTML = `
-    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy${scWindowNote}</span><b>${scRebuyLabel}</b></div>`;
+    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scRebuyLabel}</b></div>
+    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Only available during the first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
 
   let statusHTML = '';
   if(!currentEntry){
@@ -2719,7 +2712,9 @@ async function renderStandings(body){
     let statusClass, statusLabel;
     if(!r.alive){
       // Definitive: only ever set by commissioner_finalize_week once a week's scores are locked in.
-      statusClass = 'elim'; statusLabel = `ELIMINATED · WK ${r.eliminated_week}`;
+      // Abbreviated ("ELIM" not "ELIMINATED") to leave more room for a long display name on a
+      // narrow phone before the name-truncation below (see survivorsRowsHTML) has to kick in.
+      statusClass = 'elim'; statusLabel = `ELIM · WK ${r.eliminated_week}`;
     } else if(isLive && cautionWindowOpen){
       const liveTotal = liveTotalsMap[r.profile_id] || 0;
       statusClass = liveTotal >= threshold ? 'alive' : 'caution';
@@ -2730,12 +2725,21 @@ async function renderStandings(body){
     return { id: r.profile_id, display_name: r.profiles.display_name, flair_team: r.profiles.flair_team, alive: r.alive, eliminated_week: r.eliminated_week, second_chance_used: r.second_chance_used, total, statusClass, statusLabel };
   }).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name));
 
+  // The name group is the one side allowed to shrink (min-width:0 + flex:1 1 auto) --
+  // a long display name ellipsizes instead of wrapping or forcing the row wider than the
+  // screen, while the points+status side (flex:0 0 auto) always renders in full since
+  // "ELIM · WK 12" etc. isn't useful truncated. flair pill/second-chance icon sit outside
+  // the truncating inner span so they never get clipped along with a long name.
   function survivorsRowsHTML(list){
     return list.map(r => `
       <div class="lb-row">
-        <span>${esc(r.display_name)}${r.flair_team ? ' ' + flairPillHTML(r.flair_team) : ''}${r.second_chance_used ? ' ' + secondChanceIconHTML() : ''}</span>
-        <span class="row" style="gap:8px;width:auto;">
-          <b style="color:var(--purple);">${fmtPts(r.total)} pts</b>
+        <span style="display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc(r.display_name)}</span>
+          ${r.flair_team ? flairPillHTML(r.flair_team) : ''}
+          ${r.second_chance_used ? secondChanceIconHTML() : ''}
+        </span>
+        <span class="row" style="gap:8px;width:auto;flex:0 0 auto;flex-wrap:nowrap;">
+          <b style="color:var(--purple);white-space:nowrap;">${fmtPts(r.total)} pts</b>
           <span class="pill ${r.statusClass}">${r.statusLabel}</span>
         </span>
       </div>`).join('') || '<p>No approved players yet.</p>';
