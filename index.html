@@ -2291,8 +2291,10 @@ async function renderHome(body){
   body.innerHTML = homeSkeletonHTML();
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
-  const threshold = contestRow?.weekly_threshold ?? 100;
-  const isEliminator = contestRow?.game_type === 'eliminator';
+  // threshold/isEliminator aren't needed here any more -- renderRecapCardHTML() below computes
+  // its own copies from currentContest directly, since it has to be independently callable
+  // (not just inline in this function) for recapPrev/recapNext's scoped refresh -- see its
+  // own comment.
   // Second-chance rebuy status line shown on the Week recap card below (above the DK
   // scoring accordion) -- a quick contest-level fact independent of any one week, same
   // spot the DK scoring reference already lives. Not offered at all when
@@ -2380,86 +2382,14 @@ async function renderHome(body){
     statusHTML = `<div class="card pulse-alive"><h3>You're alive</h3><p>There's no open week right now — check back once the next one opens.</p>${reuseReminderHTML}</div>`;
   }
 
-  let recapHTML = '';
-  if(recentWeekNumber){
-    const isFinal = !!recentWeekRow?.is_finalized;
-    const recapSlotsHTML = lineupSlots.map(slot => {
-      const pick = recentWeekPicks.find(p => p.slot === slot.slot);
-      if(!pick){
-        return `<div class="recap-row"><span class="slot-label">${slot.slot}</span><span class="recap-name" style="color:var(--text-dim);">Not filled</span></div>`;
-      }
-      const scoreColor = pick.result === 'pass' ? 'var(--alive)' : pick.result === 'fail' ? 'var(--elim)' : 'var(--text-dim)';
-      const scoreText = pick.score !== null ? `${fmtPts(pick.score)} pts` : 'Pending';
-      const estTag = (pick.score !== null && pick.source === 'computed') ? ` <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn't reviewed it yet">Est.</span>` : '';
-      return `
-        <div class="recap-row">
-          <span class="slot-label">${slot.slot}</span>
-          <span class="recap-name">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(pick.team)})</span></span>
-          <span class="recap-score" style="color:${scoreColor};">${scoreText}${estTag}</span>
-        </div>`;
-    }).join('');
-
-    // Reflect scores the moment the admin saves them (picks_with_scores
-    // already carries whatever's in week_player_scores), not just once the
-    // whole week is finalized -- so this sums whatever's scored so far
-    // rather than gating on every slot being done.
-    const scoredCount = recentWeekPicks.filter(p => p.score !== null).length;
-    const currentTotal = scoredCount > 0 ? recentWeekPicks.reduce((sum,p) => sum + (Number(p.score) || 0), 0) : null;
-    const fullyScored = scoredCount === lineupSlots.length && lineupSlots.length > 0;
-
-    // Scores refresh on a 15-minute cron gated to each week's own real game
-    // window (see survivor-fantasy-setup.md's automated-scoring notes). This
-    // tells players when that window closes for THIS week (closes_at + the
-    // sync's 24h post-window buffer) and when a score here last changed,
-    // from whichever pick has the newest score_updated_at (picks_with_scores).
-    const syncWindowEndIso = recentWeekClosesAt ? new Date(new Date(recentWeekClosesAt).getTime() + 24*60*60*1000).toISOString() : null;
-    const lastScoreUpdate = recentWeekPicks.reduce((max,p) => {
-      if(!p.score_updated_at) return max;
-      const t = new Date(p.score_updated_at);
-      return (!max || t > max) ? t : max;
-    }, null);
-
-    // Eliminator (KnightFall Guillotine) has no per-week point threshold -- whether that
-    // total was "good enough" depends on where it landed relative to everyone else that
-    // week, not a fixed number, so the total is shown in a neutral color there instead of
-    // the green/red threshold comparison Survivor (Kingmaker Gauntlet) uses. pick.result
-    // (pass/fail, set by commissioner_finalize_week for both modes) still drives each
-    // slot's own row color either way.
-    const totalColor = isEliminator ? 'var(--text)' : (currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)');
-
-    // Always shows one of the two -- Live (yellow, glowing, same as the Caution pill's
-    // color on Standings) or Final (green, same as the Alive pill) -- rather than only
-    // tagging the not-final case. That's what let "recap" drop from the heading entirely:
-    // the pill itself now says what state the week is in, so the heading doesn't need to
-    // imply anything about completeness on its own. Uses the dedicated .week-pill classes
-    // (not .est-pill) since this is a different, more prominent visual treatment than the
-    // small purple "Est." tags used elsewhere on this same card.
-    const weekStatusPill = isFinal
-      ? ' <span class="week-pill final" title="Finalized by the admin">Final</span>'
-      : ' <span class="week-pill live" title="Live and unofficial — updates automatically as games end and finalized stats stream in, not final until the admin finalizes the week">Live</span>';
-
-    recapHTML = `
-      <div class="card">
-        <div class="row">
-          <h3>Week ${recentWeekNumber}${weekStatusPill}</h3>
-          <span class="row" style="gap:6px;width:auto;">
-            <button class="small secondary" id="recapPrev" ${recapWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
-            <button class="small secondary" id="recapNext" ${recapWeekIndex >= recentWeekNumbers.length - 1 ? 'disabled' : ''}>›</button>
-          </span>
-        </div>
-        ${recapSlotsHTML}
-        ${currentTotal !== null ? `
-          <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
-          ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates as games end and finalized stats stream in. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
-        ` : ''}
-        ${isEliminator
-          ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
-          : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
-        ${secondChanceStatHTML}
-        ${dkScoringHTML('recap')}
-      </div>`;
-  }
-
+  // recapHTML/highScoresHTML are each built by their own standalone, self-contained function
+  // (renderRecapCardHTML()/renderHighScoresCardHTML() below) rather than inline here, and each
+  // gets its own mount div below -- specifically so recapPrev/recapNext/hsPrev/hsNext
+  // (wireRecapCard()/wireHighScoresCard() below) can regenerate just their own card's markup
+  // and swap only that mount's innerHTML, instead of re-running this whole function (which
+  // shows homeSkeletonHTML() first) just to page through a week. See those wire functions'
+  // own comments for why this distinction matters.
+  const recapHTML = renderRecapCardHTML();
   const highScoresHTML = await renderHighScoresCardHTML();
 
   body.innerHTML = `
@@ -2470,8 +2400,8 @@ async function renderHome(body){
     <div id="nameEditArea"></div>
     <div id="flairEditArea"></div>
     ${statusHTML}
-    ${recapHTML}
-    ${highScoresHTML}
+    <div id="recapCardMount">${recapHTML}</div>
+    <div id="highScoresCardMount">${highScoresHTML}</div>
   `;
   wireHighScoresCard(body);
   if(homeHighScoresData) animateHighScoreChanges(homeHighScoresData.wk, homeHighScoresData.top5);
@@ -2525,6 +2455,102 @@ async function renderHome(body){
   }
 }
 
+// Contest Home's "Week N" recap card. Self-contained like renderHighScoresCardHTML() below --
+// pulls everything it needs from module-level state (recentWeekNumber/recentWeekRow/
+// recentWeekPicks/recentWeekClosesAt, lineupSlots, currentContest, currentEntry) rather than
+// closing over renderHome()'s own local variables, specifically so recapPrev/recapNext
+// (wireRecapCard() below) can regenerate just this card's markup after loadRecentWeek() and
+// swap only its own mount's innerHTML, instead of re-running the whole renderHome() (which
+// shows homeSkeletonHTML() first) just to page to a different week. Synchronous -- everything
+// it reads is already-loaded module state, no awaits needed here; the caller awaits
+// loadRecentWeek() beforehand to refresh that state. Returns '' when there's no recent week to
+// show yet, same as the inline version this replaced.
+function renderRecapCardHTML(){
+  if(!recentWeekNumber) return '';
+  const threshold = currentContest?.weekly_threshold ?? 100;
+  const isEliminator = currentContest?.game_type === 'eliminator';
+  const scWindowWeeks = currentContest?.second_chance_window_weeks ?? 0;
+  const secondChanceStatHTML = `
+    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes')}</b></div>
+    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Only available during the first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
+
+  const isFinal = !!recentWeekRow?.is_finalized;
+  const recapSlotsHTML = lineupSlots.map(slot => {
+    const pick = recentWeekPicks.find(p => p.slot === slot.slot);
+    if(!pick){
+      return `<div class="recap-row"><span class="slot-label">${slot.slot}</span><span class="recap-name" style="color:var(--text-dim);">Not filled</span></div>`;
+    }
+    const scoreColor = pick.result === 'pass' ? 'var(--alive)' : pick.result === 'fail' ? 'var(--elim)' : 'var(--text-dim)';
+    const scoreText = pick.score !== null ? `${fmtPts(pick.score)} pts` : 'Pending';
+    const estTag = (pick.score !== null && pick.source === 'computed') ? ` <span class="est-pill" title="Auto-filled from live NFL stats — the commissioner hasn't reviewed it yet">Est.</span>` : '';
+    return `
+      <div class="recap-row">
+        <span class="slot-label">${slot.slot}</span>
+        <span class="recap-name">${esc(pick.nfl_player_name)} <span style="color:var(--text-dim);">(${esc(pick.team)})</span></span>
+        <span class="recap-score" style="color:${scoreColor};">${scoreText}${estTag}</span>
+      </div>`;
+  }).join('');
+
+  // Reflect scores the moment the admin saves them (picks_with_scores
+  // already carries whatever's in week_player_scores), not just once the
+  // whole week is finalized -- so this sums whatever's scored so far
+  // rather than gating on every slot being done.
+  const scoredCount = recentWeekPicks.filter(p => p.score !== null).length;
+  const currentTotal = scoredCount > 0 ? recentWeekPicks.reduce((sum,p) => sum + (Number(p.score) || 0), 0) : null;
+  const fullyScored = scoredCount === lineupSlots.length && lineupSlots.length > 0;
+
+  // Scores refresh on a 15-minute cron gated to each week's own real game
+  // window (see survivor-fantasy-setup.md's automated-scoring notes). This
+  // tells players when that window closes for THIS week (closes_at + the
+  // sync's 24h post-window buffer) and when a score here last changed,
+  // from whichever pick has the newest score_updated_at (picks_with_scores).
+  const syncWindowEndIso = recentWeekClosesAt ? new Date(new Date(recentWeekClosesAt).getTime() + 24*60*60*1000).toISOString() : null;
+  const lastScoreUpdate = recentWeekPicks.reduce((max,p) => {
+    if(!p.score_updated_at) return max;
+    const t = new Date(p.score_updated_at);
+    return (!max || t > max) ? t : max;
+  }, null);
+
+  // Eliminator (KnightFall Guillotine) has no per-week point threshold -- whether that
+  // total was "good enough" depends on where it landed relative to everyone else that
+  // week, not a fixed number, so the total is shown in a neutral color there instead of
+  // the green/red threshold comparison Survivor (Kingmaker Gauntlet) uses. pick.result
+  // (pass/fail, set by commissioner_finalize_week for both modes) still drives each
+  // slot's own row color either way.
+  const totalColor = isEliminator ? 'var(--text)' : (currentTotal >= threshold ? 'var(--alive)' : 'var(--elim)');
+
+  // Always shows one of the two -- Live (yellow, glowing, same as the Caution pill's
+  // color on Standings) or Final (green, same as the Alive pill) -- rather than only
+  // tagging the not-final case. That's what let "recap" drop from the heading entirely:
+  // the pill itself now says what state the week is in, so the heading doesn't need to
+  // imply anything about completeness on its own. Uses the dedicated .week-pill classes
+  // (not .est-pill) since this is a different, more prominent visual treatment than the
+  // small purple "Est." tags used elsewhere on this same card.
+  const weekStatusPill = isFinal
+    ? ' <span class="week-pill final" title="Finalized by the admin">Final</span>'
+    : ' <span class="week-pill live" title="Live and unofficial — updates automatically as games end and finalized stats stream in, not final until the admin finalizes the week">Live</span>';
+
+  return `
+    <div class="card">
+      <div class="row">
+        <h3>Week ${recentWeekNumber}${weekStatusPill}</h3>
+        <span class="row" style="gap:6px;width:auto;">
+          <button class="small secondary" id="recapPrev" ${recapWeekIndex <= 0 ? 'disabled' : ''}>‹</button>
+          <button class="small secondary" id="recapNext" ${recapWeekIndex >= recentWeekNumbers.length - 1 ? 'disabled' : ''}>›</button>
+        </span>
+      </div>
+      ${recapSlotsHTML}
+      ${currentTotal !== null ? `
+        <div class="stat" style="margin-top:10px;"><span>${isFinal ? 'Total' : 'Current total'}</span><b style="color:${totalColor}">${fmtPts(currentTotal)} pts</b></div>
+        ${!isFinal ? `<p class="estimate-note">${fullyScored ? 'Estimated' : 'Projected'} — updates as games end and finalized stats stream in. Last updated ${ctTime(lastScoreUpdate.toISOString())}.</p>` : ''}
+      ` : ''}
+      ${isEliminator
+        ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
+        : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
+      ${secondChanceStatHTML}
+      ${dkScoringHTML('recap')}
+    </div>`;
+}
 // Weekly high-scores card, used on Contest Home with prev/next arrows
 // through every finalized week in this contest, plus the live
 // in-progress week if there is one -- scores update as sync-player-stats
@@ -2563,19 +2589,42 @@ async function renderHighScoresCardHTML(){
       <div style="margin-top:8px;">${weekTopPlayersListHTML(topPlayers)}</div>
     </div>`;
 }
+// Re-renders just the High Scores card's own mount in place -- NOT the whole renderHome(body)
+// -- so paging between weeks updates only this card's content, without the homeSkeletonHTML()
+// flash and full data reload renderHome() does for a real tab switch, and without disturbing
+// scroll position (a full renderHome() briefly collapses the tab to that tiny skeleton while
+// its own awaits are in flight, which was popping the page back to the top on every arrow
+// click -- this card's own re-fetch doesn't need any of that). Re-wires itself afterward since
+// swapping the mount's innerHTML replaces the prev/next buttons themselves.
 function wireHighScoresCard(body){
   const prev = document.getElementById('hsPrev'), next = document.getElementById('hsNext');
-  if(prev) prev.onclick = async () => { hsWeekIndex--; await renderHome(body); };
-  if(next) next.onclick = async () => { hsWeekIndex++; await renderHome(body); };
+  const refresh = async () => {
+    const mount = document.getElementById('highScoresCardMount');
+    if(!mount) return;
+    mount.innerHTML = await renderHighScoresCardHTML();
+    wireHighScoresCard(body);
+    if(homeHighScoresData) animateHighScoreChanges(homeHighScoresData.wk, homeHighScoresData.top5);
+  };
+  if(prev) prev.onclick = async () => { hsWeekIndex--; await refresh(); };
+  if(next) next.onclick = async () => { hsWeekIndex++; await refresh(); };
 }
-// Recap card's own prev/next arrows (same pattern as the High Scores card
-// above) -- pages recapWeekIndex back/forward through recentWeekNumbers and reloads,
-// rather than just re-rendering with cached data, since scores can still be live-updating
-// for the most recent started week.
+// Recap card's own prev/next arrows (same pattern as the High Scores card above) -- pages
+// recapWeekIndex back/forward through recentWeekNumbers and reloads via loadRecentWeek()
+// (rather than just re-rendering with cached data, since scores can still be live-updating for
+// the most recent started week), then re-renders just this card's own mount in place -- see
+// wireHighScoresCard()'s own comment for why that distinction (vs. the whole renderHome(body))
+// matters. wireDkScoringAccordion() is re-run too since the card's own DK-scoring accordion
+// item gets replaced along with everything else in the mount.
 function wireRecapCard(body){
   const prev = document.getElementById('recapPrev'), next = document.getElementById('recapNext');
-  if(prev) prev.onclick = guard(async () => { recapWeekIndex--; await loadRecentWeek(); await renderHome(body); });
-  if(next) next.onclick = guard(async () => { recapWeekIndex++; await loadRecentWeek(); await renderHome(body); });
+  const refresh = async () => {
+    const mount = document.getElementById('recapCardMount');
+    if(mount) mount.innerHTML = renderRecapCardHTML();
+    wireRecapCard(body);
+    wireDkScoringAccordion();
+  };
+  if(prev) prev.onclick = guard(async () => { recapWeekIndex--; await loadRecentWeek(); await refresh(); });
+  if(next) next.onclick = guard(async () => { recapWeekIndex++; await loadRecentWeek(); await refresh(); });
 }
 
 // Picks is the action tab: building/locking this week's lineup within the
