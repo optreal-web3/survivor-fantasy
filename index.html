@@ -53,6 +53,7 @@
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
     --bg-grad-end:#242424;
+    --bg-tint:var(--bg-grad-end);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   /* overflow-x:hidden here would clip horizontal overflow too, but -- because CSS treats
@@ -63,7 +64,13 @@
      treated as the same "doesn't need its own scroll container" category) while still clipping
      horizontal overflow exactly the same as hidden did. */
   html,body{margin:0;padding:0;overflow-x:clip;}
-  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-grad-end) 100%);background-attachment:fixed;overscroll-behavior-y:contain;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-tint) 100%);background-attachment:fixed;overscroll-behavior-y:contain;}
+  /* Muted diagonal-hairline texture over the whole page background -- always present (8% white
+     lines regardless of flair), fixed so it doesn't scroll oddly against the body's own
+     background-attachment:fixed gradient. Kept as its own pseudo-element rather than a second
+     background-image layer on body itself, parallel to how .hero-banner::before carries its own
+     sparkle texture rather than stacking onto .hero-banner's background-image. */
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0, rgba(255,255,255,.08) 1px, transparent 1px, transparent 20px);}
   /* #navMount (sticky, full-bleed -- see its own comment below) sits outside .wrap just like
      #heroBanner does, so this top padding is just the breathing room between #navMount's bottom
      edge and .wrap's first real content (the app-header brand logo), not a header-height
@@ -272,9 +279,10 @@
   }
   /* Week-status pill (Contest Home's "Week N" heading): Live/Final, built on --caution/
      --alive the same way the Standings status pills are, and deliberately NOT on --purple/
-     --pending -- those two are the only vars applyThemeAccent()/flair re-theming ever
-     touches, so building this on --caution/--alive keeps Live/Final's colors fixed
-     regardless of which flair team's accent is currently applied. */
+     --pending -- --purple/--purple-rgb/--accent-ink/--bg-tint are the only vars
+     applyThemeAccent()/flair re-theming ever touches, so building this on --caution/--alive
+     keeps Live/Final's colors fixed regardless of which flair team's accent is currently
+     applied. */
   .week-pill{font-size:10px;padding:2.5px 9px;border-radius:6px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.5px;flex:0 0 auto;border:1px solid;margin-left:2px;}
   .week-pill.live{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);animation:weekLiveGlow 2.4s ease-in-out infinite;}
   .week-pill.final{background:var(--alive-dim);color:var(--alive);border-color:var(--alive);}
@@ -673,6 +681,20 @@ function hexToRgbTriplet(hex){
   return `${r}, ${g}, ${b}`;
 }
 
+// Blends tintHex into baseHex at the given strength (0-1) and returns the result as a
+// '#rrggbb' hex string. Used to compute --bg-tint below: a flat, precomputed blend rather
+// than a live CSS mix, since a stacked/computed background caused real rendering problems
+// during mockup (see BackgroundVariants.dc.html's own history) and a single solid resulting
+// color sidesteps that entirely.
+function blendHex(baseHex, tintHex, strength){
+  const b = (baseHex || '').replace('#', ''), t = (tintHex || '').replace('#', '');
+  const br = parseInt(b.substring(0, 2), 16) || 0, bg = parseInt(b.substring(2, 4), 16) || 0, bb = parseInt(b.substring(4, 6), 16) || 0;
+  const tr = parseInt(t.substring(0, 2), 16) || 0, tg = parseInt(t.substring(2, 4), 16) || 0, tb = parseInt(t.substring(4, 6), 16) || 0;
+  const mix = (base, tint) => Math.round(base * (1 - strength) + tint * strength);
+  const toHex = n => n.toString(16).padStart(2, '0');
+  return `#${toHex(mix(br, tr))}${toHex(mix(bg, tg))}${toHex(mix(bb, tb))}`;
+}
+
 // Re-themes the app's accent color (buttons, section headers, the week
 // counter, FAQ toggle, etc.) to the current flair
 // team's secondary_hex, falling back to the original purple when no flair
@@ -684,7 +706,18 @@ function hexToRgbTriplet(hex){
 // from a team color a player happens to have picked. Sets --accent-ink
 // (the button text color) to dark or light based on the accent's own
 // brightness, since several teams' secondary colors are near-white and
-// white-on-white button text would otherwise be unreadable.
+// white-on-white button text would otherwise be unreadable. Also sets
+// --bg-tint (the page background's lower gradient stop, body's own
+// diagonal-hairline texture stays neutral white on top regardless): a
+// 24%-strength blend of the team's primary_hex into --bg-grad-end's own
+// #242424, deliberately using primary_hex rather than secondary_hex here
+// since secondary already drives the accent above and primary reads
+// darker/more muted for nearly every team. 24% (not the ~14% first shown
+// in mockup) per Gabe's call that the first pass read too bright -- some
+// teams whose primary sits close to #242424 already (e.g. Seahawks navy)
+// will still read as barely-there at this strength; expect to dial
+// individual teams' primary_hex values rather than this shared strength
+// once specific teams are flagged as too subtle or too strong.
 function applyThemeAccent(){
   const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
   const hex = team ? team.secondary_hex : '#8B5CF6';
@@ -697,6 +730,7 @@ function applyThemeAccent(){
   root.setProperty('--purple', hex);
   root.setProperty('--purple-rgb', hexToRgbTriplet(hex));
   root.setProperty('--accent-ink', brightness > 150 ? '#0A0B12' : '#ffffff');
+  root.setProperty('--bg-tint', team ? blendHex('#242424', team.primary_hex, 0.24) : '#242424');
 }
 
 // "Playing as <name>" header + its pencil-to-edit and flair-picker
