@@ -2355,7 +2355,10 @@ function saveProjCollapsed(collapsed){
   } catch(e){ /* localStorage unavailable -- just won't persist, not fatal */ }
 }
 function lineupRosterLine(chosen){
-  return chosen.map(c => c.player ? `${esc(c.slot)} ${esc(c.player.full_name)}` : `${esc(c.slot)} —`).join(', ');
+  // Each player's own projected score sits in parentheses right after their name -- the
+  // option's title already shows the roster's combined total, but a player picking between
+  // High/Mid/Low still wants to see what each individual player is expected to contribute.
+  return chosen.map(c => c.player ? `${esc(c.slot)} ${esc(c.player.full_name)} (${fmtPts(c.player.projected_score)})` : `${esc(c.slot)} —`).join(', ');
 }
 // One compact line per option (roster names + a single total) rather than
 // one line per slot -- 3 options at 7-8 lines each was taking up a full
