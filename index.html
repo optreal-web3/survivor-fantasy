@@ -1218,6 +1218,11 @@ function contestCardHTML(c){
   const currency = currencyForContest(c);
   const feeLabel = c.is_free ? 'Free' : (c.entry_fee ? `${fmtAmt(c.entry_fee)} ${currency.toUpperCase()} entry` : 'Paid');
   const statusLabel = c.registration_open ? 'Open' : 'Closed';
+  // Player-reuse tag: most contests don't allow reusing the same NFL player across weeks
+  // (unique_players_per_season defaults true) -- this makes that rule visible at a glance on
+  // the Lobby card itself, rather than only inside a contest once joined. Sits right after the
+  // game mode name since it's a property of how that mode was configured at creation.
+  const reuseLabel = c.unique_players_per_season === false ? 'Reuse' : 'No Reuse';
   const pendingApprovalPill = !c.platform_approved ? `<span class="pill pending" style="margin-left:6px;">AWAITING APPROVAL</span>` : '';
 
   let actionHTML;
@@ -1238,7 +1243,7 @@ function contestCardHTML(c){
     <div class="lb-row" style="flex-wrap:wrap;">
       <span>
         <div style="color:var(--text);font-weight:700;">${esc(c.name)}${pendingApprovalPill}</div>
-        <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${esc(String(c.sport).toUpperCase())} · ${esc(gameTypeLabel(c.game_type))} · ${feeLabel} · ${statusLabel}</div>
+        <div style="color:var(--text-dim);font-size:12px;margin-top:2px;">${esc(String(c.sport).toUpperCase())} · ${esc(gameTypeLabel(c.game_type))} · ${reuseLabel} · ${feeLabel} · ${statusLabel}</div>
       </span>
       ${actionHTML}
     </div>`;
@@ -1958,6 +1963,16 @@ async function renderHome(body){
   const secondChanceStatHTML = `
     <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scRebuyLabel}</b></div>
     ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Only available during the first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
+  // Player-reuse reminder shown on the "You're alive" card -- unique_players_per_season is
+  // locked in at contest creation (see submit_slot_pick's reuse check), but it's easy to
+  // forget which way a given contest was set up, especially for KnightFall Guillotine
+  // contests where it can go either way. Kingmaker Gauntlet contests are always created with
+  // it true (no reuse) today, but this reads the real column value either way rather than
+  // assuming that by game mode, so it stays correct if that ever changes.
+  const reuseAllowedHome = contestRow?.unique_players_per_season === false;
+  const reuseReminderHTML = `<div class="note">${reuseAllowedHome
+    ? "Reminder: this contest allows reusing the same player in future weeks, even after they've been chosen and are locked in."
+    : "Reminder: this contest does not allow reusing the same player in future weeks once they've been chosen and are locked in."}</div>`;
 
   let statusHTML = '';
   if(!currentEntry){
@@ -2017,9 +2032,9 @@ async function renderHome(body){
   } else if(!currentEntry.is_approved){
     statusHTML = `<div class="card"><h3>Pending approval</h3><p>Your entry hasn't been approved yet — check with this contest's admin.</p></div>`;
   } else if(currentWeek){
-    statusHTML = `<div class="card"><h3>You're alive</h3><p>Head to the Picks tab to build your lineup for week ${currentWeek.week_number}.</p></div>`;
+    statusHTML = `<div class="card"><h3>You're alive</h3><p>Head to the Picks tab to build your lineup for week ${currentWeek.week_number}.</p>${reuseReminderHTML}</div>`;
   } else {
-    statusHTML = `<div class="card"><h3>You're alive</h3><p>There's no open week right now — check back once the next one opens.</p></div>`;
+    statusHTML = `<div class="card"><h3>You're alive</h3><p>There's no open week right now — check back once the next one opens.</p>${reuseReminderHTML}</div>`;
   }
 
   let recapHTML = '';
@@ -2576,7 +2591,7 @@ async function renderPicks(body){
     ${statusHTML}
     <div class="card ${myPicks.length === lineupSlots.length && lineupSlots.length > 0 ? 'feature' : ''}">
       <h3>Your lineup</h3>
-      <div class="note">Roster slots are editable up until that player's kickoff time. After that it locks and can't be changed. Team slots are independent from the final roster, adding some additional strategy.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
+      <div class="note">Roster slots are editable up until that player's kickoff time. After that it locks and can't be changed. Each roster slot locks independent so you do not have to fill the entire team at the same time - which adds some additional strategy.${reuseAllowed ? ' This contest allows reusing the same player in a different week.' : ''}</div>
       ${lineupSlots.length > 0 ? (myPicks.length === lineupSlots.length
         ? '<span class="pill alive" style="margin-top:6px;display:inline-block;">Team Roster Complete</span>'
         : '<span class="pill caution" style="margin-top:6px;display:inline-block;">Team Roster Incomplete</span>') : ''}
