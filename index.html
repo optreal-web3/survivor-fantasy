@@ -63,7 +63,7 @@
      treated as the same "doesn't need its own scroll container" category) while still clipping
      horizontal overflow exactly the same as hidden did. */
   html,body{margin:0;padding:0;overflow-x:clip;}
-  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-grad-end) 100%);background-attachment:fixed;}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-grad-end) 100%);background-attachment:fixed;overscroll-behavior-y:contain;}
   /* #navMount (sticky, full-bleed -- see its own comment below) sits outside .wrap just like
      #heroBanner does, so this top padding is just the breathing room between #navMount's bottom
      edge and .wrap's first real content (the app-header brand logo), not a header-height
@@ -88,7 +88,7 @@
   button.warn{background:var(--caution-dim);color:var(--caution);border:1px solid var(--caution);}
   button.small{width:auto;padding:10px 12px;font-size:13px;}
   button:disabled{opacity:0.4;cursor:not-allowed;}
-  button:active{transform:translateY(1px);}
+  button:active{transform:translateY(1px) scale(0.98);}
   input,select{width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:11px;border-radius:8px;font-size:16px;font-family:'Inter',sans-serif;margin-top:5px;}
   select option:disabled{color:var(--text-dim);}
   label{font-size:12.5px;color:var(--text-dim);display:block;margin-top:11px;line-height:1.4;}
@@ -117,15 +117,17 @@
      state depending on scroll position. */
   #navMount{position:sticky;top:0;width:100%;background:var(--surface);border-bottom:1px solid var(--border);z-index:51;}
   .app-nav{display:flex;max-width:640px;margin:0 auto;padding:calc(6px + env(safe-area-inset-top)) 4px 6px;}
-  .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
+  .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;transition:transform .1s ease;}
   .bnav-item.active{color:var(--purple);}
+  .bnav-item:active{transform:scale(0.92);}
   .bnav-item .icon{line-height:1;}
   .bnav-item .icon svg{width:20px;height:20px;display:block;}
   @media (max-width:360px){ .bnav-item{font-size:8.5px;} .bnav-item .icon svg{width:18px;height:18px;} }
   .slot-card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;}
   .slot-label{font-family:'Inter',sans-serif;font-weight:800;font-size:13px;color:var(--purple);text-transform:uppercase;letter-spacing:0.5px;}
-  .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;touch-action:manipulation;}
+  .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;cursor:pointer;touch-action:manipulation;transition:transform .1s ease,background .1s ease;}
   .result-item:last-child{border-bottom:none;}
+  .result-item:active{transform:scale(0.98);background:var(--surface-2);}
   .kickoff-tag{font-size:11.5px;font-weight:700;}
   .lb-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;gap:8px;}
   .lb-row:last-child{border-bottom:none;}
@@ -143,6 +145,15 @@
   .note{font-size:12px;color:var(--text-dim);background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.5;border:1px solid var(--border);}
   .banner{background:var(--elim-dim);border:1px solid var(--elim);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;line-height:1.5;}
   .center{text-align:center;padding:60px 20px;color:var(--text-dim);}
+  /* Skeleton shimmer -- shown in place of the standings list / weekly high-score rows while
+     their data is still in flight, instead of a blank flash or plain "Loading…" text. Purely
+     decorative (aria-hidden wherever it's used) and fully replaced once the real content
+     renders -- never left mixed in with real rows. */
+  @keyframes skShimmer{0%{background-position:-300px 0;}100%{background-position:300px 0;}}
+  .sk{background:linear-gradient(90deg, var(--surface-2) 25%, rgba(var(--purple-rgb),0.16) 37%, var(--surface-2) 63%);background-size:600px 100%;animation:skShimmer 1.3s ease-in-out infinite;border-radius:6px;}
+  .sk-row{height:18px;margin:10px 0;}
+  .sk-row.short{width:42%;}
+  .sk-row.med{width:72%;}
   .stat{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;padding:6px 0;font-size:14px;}
   .stat b{color:var(--text);font-weight:700;}
   .recap-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14.5px;}
@@ -166,6 +177,45 @@
   .player-score-pickers{font-size:11.5px;color:var(--text-dim);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border);line-height:1.4;}
   .scoreInput{width:64px;flex:0 0 auto;margin:0;padding:6px 8px;font-size:13px;text-align:right;}
   .est-pill{font-size:9.5px;padding:2px 7px;border-radius:5px;font-weight:800;white-space:nowrap;text-transform:uppercase;letter-spacing:0.4px;background:var(--pending-dim);color:var(--pending);border:1px solid var(--pending);flex:0 0 auto;}
+  /* Standings/weekly-high-score point values: tabular-nums so a column of numbers lines up
+     instead of jittering side to side as digit widths change, plus the shared hook (.pts-val)
+     that count-up tweening and the brief flash-on-change color animate against -- see
+     tweenPoints()/animateStandingsChanges()/animateHighScoreChanges(). .pts-hero reuses the
+     scoreboard's big Archivo Black treatment for the single most prominent number in a list
+     (the weekly high-scores leader, the Standings #1 row) rather than a second "big number"
+     style. */
+  .pts-val{color:var(--purple);white-space:nowrap;font-variant-numeric:tabular-nums;transition:color .5s ease;}
+  .pts-val.pts-flash-up{color:var(--alive);}
+  .pts-val.pts-flash-down{color:var(--elim);}
+  .pts-hero{font-family:'Archivo Black',sans-serif;font-size:19px;letter-spacing:0.2px;}
+  .recap-row .recap-score, .stat b, .scoreInput{font-variant-numeric:tabular-nums;}
+  /* Rank-change arrow: briefly inserted next to a Standings name when that player's position
+     moved since the last time this list rendered (tab switch, pull-to-refresh, or any action
+     that reloads it) -- removed again once rankPop's animation finishes rather than tracked
+     and cleaned up on the next real render. */
+  .rank-move{width:12px;height:12px;flex:0 0 auto;color:var(--alive);animation:rankPop 2.4s ease forwards;}
+  .rank-move svg{width:100%;height:100%;display:block;}
+  .rank-move.rank-move-down{color:var(--elim);}
+  @keyframes rankPop{0%{opacity:0;transform:translateY(3px) scale(0.6);}15%{opacity:1;transform:translateY(0) scale(1.15);}30%{transform:scale(1);}78%{opacity:1;}100%{opacity:0;}}
+  /* Podium treatment for Standings' top 3 -- a small numbered badge, since the list itself is
+     sorted but was never numbered before this. Colored circles rather than medal emoji, same
+     reasoning as secondChanceIconHTML()'s SVG wings: stays in the app's own monochrome/flat
+     visual language instead of pulling in full-color emoji art. #1 also gets .pts-hero (above)
+     for its point value and a faint gold row tint. */
+  .rank-badge{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Archivo Black',sans-serif;font-size:10px;flex:0 0 auto;color:#1A1206;}
+  .rank-badge.r1{background:#F4C430;}
+  .rank-badge.r2{background:#C7CDD6;}
+  .rank-badge.r3{background:#D69A5D;}
+  .lb-row.podium-1{background:linear-gradient(90deg, rgba(244,196,48,0.1), transparent);border-radius:8px;padding-left:6px;padding-right:6px;margin:0 -6px;}
+  /* Pull-to-refresh indicator -- a fixed pill just under the sticky nav that fades/slides in as
+     the page is pulled down past scrollY:0, then spins (ptr-spin) while render() re-fetches the
+     current tab. Reuses the Picks tab's own football icon (ICON_PATHS.picks) rather than adding
+     a second one -- see wirePullToRefresh(). */
+  .ptr-indicator{position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;width:34px;height:34px;opacity:0;transform:translate(-50%,-36px);transition:opacity .15s ease;z-index:60;pointer-events:none;}
+  .ptr-indicator-icon{width:100%;height:100%;padding:7px;box-sizing:border-box;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--purple);}
+  .ptr-indicator-icon svg{width:100%;height:100%;display:block;}
+  .ptr-indicator.ptr-spin .ptr-indicator-icon{animation:ptrSpin .7s linear infinite;}
+  @keyframes ptrSpin{to{transform:rotate(360deg);}}
   /* Player Projections card (Picks tab): .proj-option is one High/Mid/Low
      (or KnightFall's single best) block -- title+total on one line, then a
      single wrapped paragraph of "SLOT Name" entries rather than a row per
@@ -201,7 +251,8 @@
   .confirm-box{border-top:1px solid var(--border);margin-top:8px;padding-top:8px;}
   .faq-item{border-bottom:1px solid var(--border);padding:11px 0;}
   .faq-item:last-child{border-bottom:none;}
-  .faq-q{font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px;touch-action:manipulation;}
+  .faq-q{font-weight:700;font-size:14px;cursor:pointer;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:10px;touch-action:manipulation;transition:opacity .1s ease;}
+  .faq-q:active{opacity:0.6;}
   .faq-q::after{content:'+';color:var(--purple);font-size:18px;font-weight:400;flex:0 0 auto;}
   .faq-q.open::after{content:'−';}
   .faq-a{display:none;margin-top:8px;font-size:13.5px;color:var(--text-dim);line-height:1.5;}
@@ -229,7 +280,8 @@
   .flair-division-label{font-size:10px;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;}
   .flair-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
   @media (max-width:420px){ .flair-grid{grid-template-columns:repeat(3,1fr);} }
-  .flair-tile{border:1.5px solid var(--border);border-radius:8px;padding:9px 4px;font-family:'Inter',sans-serif;font-weight:800;font-size:12px;letter-spacing:0.3px;background:var(--surface-2);color:var(--tile-color,var(--text));width:100%;cursor:pointer;touch-action:manipulation;display:flex;align-items:center;justify-content:center;gap:5px;}
+  .flair-tile{border:1.5px solid var(--border);border-radius:8px;padding:9px 4px;font-family:'Inter',sans-serif;font-weight:800;font-size:12px;letter-spacing:0.3px;background:var(--surface-2);color:var(--tile-color,var(--text));width:100%;cursor:pointer;touch-action:manipulation;display:flex;align-items:center;justify-content:center;gap:5px;transition:transform .1s ease;}
+  .flair-tile:active{transform:scale(0.94);}
   .flair-tile.selected{border-color:var(--tile-color,var(--purple));box-shadow:0 0 0 1px var(--tile-color,var(--purple)) inset;}
   .flair-tile img{width:18px;height:18px;border-radius:4px;object-fit:cover;flex:0 0 auto;}
   /* The blurb sits right under the tab content with a divider line above it; the Disclaimers/
@@ -674,6 +726,123 @@ function fmtPts(n){
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
+// Count-up/down tween for a .pts-val element's displayed points when its underlying number
+// changes between renders (Standings, the weekly high-scores card) -- purely a visual
+// transition layered on top of already-correct HTML: the row's real final text is whatever
+// survivorsRowsHTML()/weekTop5ListHTML() rendered, this just animates *into* it instead of a
+// hard replace, and always finishes on the exact rounded value so it can never drift from what
+// a fresh render would show. See animateStandingsChanges()/animateHighScoreChanges() for the
+// before/after comparison that decides which rows get tweened.
+function tweenPoints(el, from, to){
+  el.classList.remove('pts-flash-up', 'pts-flash-down');
+  void el.offsetWidth; // restart the flash-color transition if one was still fading out
+  el.classList.add(to > from ? 'pts-flash-up' : 'pts-flash-down');
+  const duration = 700, start = performance.now();
+  function step(now){
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = `${fmtPts(from + (to - from) * eased)} pts`;
+    if(t < 1) requestAnimationFrame(step);
+    else setTimeout(() => el.classList.remove('pts-flash-up', 'pts-flash-down'), 500);
+  }
+  requestAnimationFrame(step);
+}
+// Briefly inserts a small up/down chevron (.rank-move, see its CSS) at the front of a
+// Standings row's name group when that player's position moved since the list last rendered.
+// Self-removing (rankPop's animation duration below) so it never needs to be tracked or
+// cleaned up by the next real render -- each render just calls this again if warranted.
+function flashRankMove(rowEl, dir){
+  const nameGroup = rowEl.querySelector(':scope > span:first-child');
+  if(!nameGroup) return;
+  const arrow = document.createElement('span');
+  arrow.className = `rank-move rank-move-${dir}`;
+  arrow.setAttribute('aria-hidden', 'true');
+  arrow.innerHTML = dir === 'up'
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M5 13l7-7 7 7"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v13M5 11l7 7 7-7"/></svg>';
+  nameGroup.insertBefore(arrow, nameGroup.firstChild);
+  setTimeout(() => arrow.remove(), 2500);
+}
+
+// Skeleton shimmer shells (see .sk/.sk-row CSS) -- shown as each tab's very first paint,
+// swapped out entirely once that render function's real await chain resolves and sets the
+// same body's innerHTML for real. Only covers Home and Standings for now, since those are the
+// two views whose data (weekly high scores, the full entrants list) will keep growing with
+// contest size; the other tabs' fetches are small/fixed regardless of how many players join.
+function homeSkeletonHTML(){
+  return `
+    <div class="scoreboard">
+      <div><div class="week-label">Playing as</div><div class="sk" style="width:140px;height:20px;margin-top:6px;"></div></div>
+      <div style="text-align:right;"><div class="week-label">Week</div><div class="sk" style="width:38px;height:32px;margin-top:2px;margin-left:auto;"></div></div>
+    </div>
+    <div class="card"><div class="sk sk-row med"></div><div class="sk sk-row short"></div></div>
+    <div class="card">
+      <h3>Weekly high scores</h3>
+      <div style="margin-top:8px;">${Array.from({length:5}).map(() => `<div class="row" style="padding:9px 0;"><div class="sk sk-row short" style="flex:1;margin:0;"></div><div class="sk" style="width:56px;height:16px;margin:0;"></div></div>`).join('')}</div>
+    </div>`;
+}
+function standingsSkeletonHTML(){
+  return `
+    <div class="card">
+      <h3>Standings</h3>
+      <div class="sk sk-row med" style="margin-top:10px;"></div>
+      <div style="margin-top:14px;">
+        ${Array.from({length:7}).map(() => `<div class="row" style="padding:9px 0;border-bottom:1px solid var(--border);"><div class="sk sk-row short" style="flex:1;margin:0;"></div><div class="sk" style="width:60px;height:20px;margin:0;"></div></div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// Pull-to-refresh -- a plain touch-gesture implementation (no library) wired once, globally,
+// the first time the app shell renders (see wirePullToRefresh's ptrWired guard). It reads
+// #ptrIndicator fresh on every touch event rather than caching a reference to it, since that
+// element is destroyed and recreated on every render() (app.innerHTML is rebuilt wholesale).
+// Only arms when the page is already scrolled to the very top (window.scrollY === 0) -- pulling
+// down mid-list just scrolls normally. On a successful pull, calls render() to re-fetch
+// whichever tab is currently active the same way switching tabs does, rather than duplicating
+// each tab's own fetch logic here.
+let ptrWired = false;
+function wirePullToRefresh(){
+  if(ptrWired) return;
+  ptrWired = true;
+  const THRESHOLD = 64;
+  let startY = null, pulling = false, refreshing = false;
+  const indicator = () => document.getElementById('ptrIndicator');
+  document.addEventListener('touchstart', (e) => {
+    const el = indicator();
+    if(!el || refreshing || window.scrollY > 0){ startY = null; return; }
+    startY = e.touches[0].clientY;
+    pulling = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    const el = indicator();
+    if(!el || startY === null || refreshing) return;
+    const dy = e.touches[0].clientY - startY;
+    if(dy <= 0 || window.scrollY > 0){ pulling = false; el.style.opacity = '0'; return; }
+    pulling = true;
+    const pull = Math.min(dy, THRESHOLD * 1.6);
+    el.style.opacity = String(Math.min(1, pull / THRESHOLD));
+    el.style.transform = `translate(-50%, ${Math.min(pull, THRESHOLD) - 36}px)`;
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    const el = indicator();
+    if(!el || !pulling){ startY = null; pulling = false; return; }
+    pulling = false;
+    const pulledEnough = parseFloat(el.style.opacity || '0') >= 1;
+    startY = null;
+    if(!pulledEnough){ el.style.opacity = '0'; el.style.transform = 'translate(-50%, -36px)'; return; }
+    refreshing = true;
+    el.classList.add('ptr-spin');
+    el.style.opacity = '1';
+    el.style.transform = 'translate(-50%, 20px)';
+    render();
+    setTimeout(() => {
+      refreshing = false;
+      const el2 = indicator();
+      if(el2){ el2.classList.remove('ptr-spin'); el2.style.opacity = '0'; el2.style.transform = 'translate(-50%, -36px)'; }
+    }, 900);
+  });
+}
+
 function ctDate(iso){
   return new Intl.DateTimeFormat('en-US', {timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit'}).format(new Date(iso));
 }
@@ -933,16 +1102,49 @@ async function getWeekTop5(weekNumber, bypassCache){
     .eq('contest_id', currentContestId).eq('week_number', weekNumber);
   const totals = {};
   (data || []).forEach(p => {
-    if(!totals[p.player_id]) totals[p.player_id] = { name: p.profiles?.display_name || '', flair_team: p.profiles?.flair_team || null, total: 0 };
+    if(!totals[p.player_id]) totals[p.player_id] = { id: p.player_id, name: p.profiles?.display_name || '', flair_team: p.profiles?.flair_team || null, total: 0 };
     totals[p.player_id].total += Number(p.score) || 0;
   });
   const top5 = Object.values(totals).sort((a,b) => b.total - a.total).slice(0, 5);
   if(!bypassCache) weekTop5Cache[cacheKey] = top5;
   return top5;
 }
+// data-pid + .pts-val on each row are what let animateHighScoreChanges() find and tween a
+// given entrant's number when this list re-renders with a changed total -- see fmtPts's
+// tween/rank-move helpers above. Rank 1 additionally gets .pts-hero, the same big Archivo Black
+// treatment the scoreboard's own week counter uses, so the week's actual leader reads as the
+// one prominent number in the card rather than sitting the same size as 2nd-5th.
 function weekTop5ListHTML(top5){
-  return top5.length ? top5.map((t,i) => `<div class="lb-row"><span>#${i+1} ${esc(t.name)}${t.flair_team ? ' ' + flairPillHTML(t.flair_team) : ''}</span><b style="color:var(--purple);">${fmtPts(t.total)} pts</b></div>`).join('')
+  return top5.length ? top5.map((t,i) => `<div class="lb-row" data-pid="${t.id}"><span>#${i+1} ${esc(t.name)}${t.flair_team ? ' ' + flairPillHTML(t.flair_team) : ''}</span><b class="pts-val${i === 0 ? ' pts-hero' : ''}">${fmtPts(t.total)} pts</b></div>`).join('')
     : '<p>No scores yet.</p>';
+}
+// Compares a freshly-fetched weekly-high-scores top5 against the last time THIS SAME
+// contest+week rendered (module-level prevHighScoreSnapshot, keyed so flipping between weeks
+// with the ‹ › arrows never cross-contaminates -- each week keeps its own snapshot) and tweens
+// any entrant whose total moved between then and now. No rank-arrow treatment here (unlike
+// Standings) since dropping in or out of a top-5 cut line isn't a simple up/down move.
+let prevHighScoreSnapshot = {};
+let homeHighScoresData = null; // { wk, top5 } | null -- set by renderHighScoresCardHTML(), read by renderHome()
+// Standings' own before/after snapshot for animateStandingsChanges() -- null until the first
+// real Standings render of a session (so nothing tweens against nothing), then
+// { [profileId]: { total, rank } } from then on.
+let prevStandingsSnapshot = null;
+function animateHighScoreChanges(week, top5){
+  if(week === undefined || week === null || !top5) return;
+  const key = `${currentContestId}:${week}`;
+  const prev = prevHighScoreSnapshot[key];
+  const next = {};
+  top5.forEach(t => { next[t.id] = t.total; });
+  if(prev){
+    top5.forEach(t => {
+      const before = prev[t.id];
+      if(before === undefined || before === t.total) return;
+      const rowEl = document.querySelector(`#tabBody .lb-row[data-pid="${t.id}"]`);
+      const ptsEl = rowEl && rowEl.querySelector('.pts-val');
+      if(ptsEl) tweenPoints(ptsEl, before, t.total);
+    });
+  }
+  prevHighScoreSnapshot[key] = next;
 }
 // Top 5 individual NFL players (not entrants) for a given week, by that
 // player's own score, plus which of this contest's entrants picked them (a
@@ -1085,6 +1287,7 @@ function render(){
   else if(screen === 'app'){
     if(currentContestId === null) renderHubShell();
     else renderContestShell();
+    wirePullToRefresh();
   }
   if(navChanged && !wasJumpingToFaq) window.scrollTo(0, 0);
 }
@@ -1186,6 +1389,7 @@ function renderHubShell(){
     </nav>
   `;
   app.innerHTML = `
+    <div id="ptrIndicator" class="ptr-indicator" aria-hidden="true"><div class="ptr-indicator-icon">${tabIcon('picks')}</div></div>
     <div class="app-header hub-header"><img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games"></div>
     <div id="tabBody"></div>
     <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association.</div>
@@ -1867,6 +2071,7 @@ function renderContestShell(){
     </nav>
   `;
   app.innerHTML = `
+    <div id="ptrIndicator" class="ptr-indicator" aria-hidden="true"><div class="ptr-indicator-icon">${tabIcon('picks')}</div></div>
     <div class="app-header">
       <img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games">
       <h1 style="margin:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(currentContest?.name || 'Contest')}</h1>
@@ -1951,6 +2156,10 @@ function wirePickHistoryAccordion(){
 // history (so players can see who's already used on the same page where
 // they're picking), both live on the Picks tab (see renderPicks below).
 async function renderHome(body){
+  // First paint while the awaits below are in flight -- see homeSkeletonHTML()'s comment.
+  // Fully overwritten by the real body.innerHTML assignment further down; nothing here is ever
+  // left mixed in with real content.
+  body.innerHTML = homeSkeletonHTML();
   const { data: contestRow } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
@@ -2136,6 +2345,7 @@ async function renderHome(body){
     ${highScoresHTML}
   `;
   wireHighScoresCard(body);
+  if(homeHighScoresData) animateHighScoreChanges(homeHighScoresData.wk, homeHighScoresData.top5);
   wireRecapCard(body);
   wireNameEdit(body);
   wireFlairPicker(body);
@@ -2198,12 +2408,17 @@ async function renderHome(body){
 async function renderHighScoresCardHTML(){
   const weeks = displayWeekNumbers();
   if(!weeks.length){
+    homeHighScoresData = null;
     return `<div class="card"><h3>Weekly high scores</h3><p>Nothing to show yet — once this week's games get underway (or the admin finalizes a week), scores will show up here.</p></div>`;
   }
   if(hsWeekIndex < 0 || hsWeekIndex >= weeks.length) hsWeekIndex = weeks.length - 1;
   const wk = weeks[hsWeekIndex];
   const isLive = wk === liveWeekNumber && !finalizedWeekNumbers.includes(wk);
   const [top5, topPlayers] = await Promise.all([getWeekTop5(wk, isLive), getWeekTopPlayers(wk, isLive)]);
+  // Stashed for renderHome to hand to animateHighScoreChanges() right after it sets body.innerHTML
+  // -- this function only returns a markup string, so it can't run that comparison itself (the
+  // rows it describes aren't attached to the DOM yet at this point).
+  homeHighScoresData = { wk, top5 };
   return `
     <div class="card">
       <div class="row">
@@ -2718,7 +2933,7 @@ function showClearConfirm(slot, name){
 }
 
 async function renderStandings(body){
-  body.innerHTML = `<div class="center">Loading standings…</div>`;
+  body.innerHTML = standingsSkeletonHTML();
   const [ , { data: contestRow } ] = await Promise.all([
     loadFinalizedWeeks(),
     sb.from('contests').select('*').eq('id', currentContestId).maybeSingle()
@@ -2789,26 +3004,61 @@ async function renderStandings(body){
       statusClass = 'alive'; statusLabel = 'ALIVE';
     }
     return { id: r.profile_id, display_name: r.profiles.display_name, flair_team: r.profiles.flair_team, alive: r.alive, eliminated_week: r.eliminated_week, second_chance_used: r.second_chance_used, total, statusClass, statusLabel };
-  }).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name));
+  }).sort((a,b) => (b.alive - a.alive) || (b.total - a.total) || a.display_name.localeCompare(b.display_name))
+    // rank is the entrant's TRUE overall standing, computed once here on the full sorted list --
+    // survivorsRowsHTML() below reads r.rank rather than its own array index specifically so the
+    // podium badge/hero number stay correct when it's called again with a filtered (searched)
+    // subset, where index 0 of the filtered array is very often not actually 1st place.
+    .map((r, i) => ({ ...r, rank: i + 1 }));
 
   // The name group is the one side allowed to shrink (min-width:0 + flex:1 1 auto) --
   // a long display name ellipsizes instead of wrapping or forcing the row wider than the
   // screen, while the points+status side (flex:0 0 auto) always renders in full since
   // "ELIM · WK 12" etc. isn't useful truncated. flair pill/second-chance icon sit outside
   // the truncating inner span so they never get clipped along with a long name.
+  // data-pid + .pts-val (and .pts-hero on #1) mirror weekTop5ListHTML's own treatment -- see
+  // animateStandingsChanges() below for how they're used, and .rank-badge/.podium-1's CSS
+  // comment for why top 3 gets a numbered circle instead of medal emoji.
   function survivorsRowsHTML(list){
     return list.map(r => `
-      <div class="lb-row">
+      <div class="lb-row${r.rank <= 3 ? ` podium-${r.rank}` : ''}" data-pid="${r.id}">
         <span style="display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;">
+          ${r.rank <= 3 ? `<span class="rank-badge r${r.rank}">${r.rank}</span>` : ''}
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc(r.display_name)}</span>
           ${r.flair_team ? flairPillHTML(r.flair_team) : ''}
           ${r.second_chance_used ? secondChanceIconHTML() : ''}
         </span>
         <span class="row" style="gap:8px;width:auto;flex:0 0 auto;flex-wrap:nowrap;">
-          <b style="color:var(--purple);white-space:nowrap;">${fmtPts(r.total)} pts</b>
+          <b class="pts-val${r.rank === 1 ? ' pts-hero' : ''}">${fmtPts(r.total)} pts</b>
           <span class="pill ${r.statusClass}">${r.statusLabel}</span>
         </span>
       </div>`).join('') || '<p>No approved players yet.</p>';
+  }
+  // Compares this render's rows against the last time Standings rendered (module-level
+  // prevStandingsSnapshot, null on the very first render of a session so nothing tweens against
+  // nothing) and, for any player whose points or rank changed since then, tweens the number
+  // and/or pops a brief up/down arrow -- see tweenPoints()/flashRankMove() above. Deliberately
+  // NOT called from the search-input handler further down: filtering the list to fewer rows
+  // isn't a real data change, and animating every remaining row on each keystroke would look
+  // like a bug, not a feature.
+  function animateStandingsChanges(){
+    const prev = prevStandingsSnapshot;
+    const next = {};
+    rows.forEach(r => { next[r.id] = { total: r.total, rank: r.rank }; });
+    if(prev){
+      rows.forEach(r => {
+        const before = prev[r.id];
+        if(!before) return;
+        const rowEl = document.querySelector(`#survivorsList .lb-row[data-pid="${r.id}"]`);
+        if(!rowEl) return;
+        if(before.total !== r.total){
+          const ptsEl = rowEl.querySelector('.pts-val');
+          if(ptsEl) tweenPoints(ptsEl, before.total, r.total);
+        }
+        if(before.rank !== r.rank) flashRankMove(rowEl, before.rank > r.rank ? 'up' : 'down');
+      });
+    }
+    prevStandingsSnapshot = next;
   }
 
   const liveNote = isLive ? `<p class="estimate-note">Week ${liveWeekNumber} is still in progress — totals update automatically as scores sync in.</p>` : '';
@@ -2824,6 +3074,7 @@ async function renderStandings(body){
       <input id="standingsSearch" placeholder="Search players..." style="margin-top:10px;"/>
       <div id="survivorsList" style="margin-top:6px;">${survivorsRowsHTML(rows)}</div>
     </div>`;
+  animateStandingsChanges();
 
   document.getElementById('standingsSearch').addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
