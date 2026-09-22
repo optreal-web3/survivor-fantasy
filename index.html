@@ -1224,7 +1224,7 @@ async function getWeekTop5(weekNumber, bypassCache){
 // treatment the scoreboard's own week counter uses, so the week's actual leader reads as the
 // one prominent number in the card rather than sitting the same size as 2nd-5th.
 function weekTop5ListHTML(top5){
-  return top5.length ? top5.map((t,i) => `<div class="lb-row" data-pid="${t.id}"><span>#${i+1} <span${t.flair_team ? ` style="color:${flairNameColor(t.flair_team)};"` : ''}>${esc(t.name)}</span>${t.flair_team ? ' ' + flairPillHTML(t.flair_team) : ''}</span><b class="pts-val${i === 0 ? ' pts-hero' : ''}">${fmtPts(t.total)} pts</b></div>`).join('')
+  return top5.length ? top5.map((t,i) => `<div class="lb-row" data-pid="${t.id}"><span><span${t.flair_team ? ` style="color:${flairNameColor(t.flair_team)};"` : ''}>${esc(t.name)}</span>${t.flair_team ? ' ' + flairPillHTML(t.flair_team) : ''}</span><b class="pts-val${i === 0 ? ' pts-hero' : ''}">${fmtPts(t.total)} pts</b></div>`).join('')
     : '<p>No scores yet.</p>';
 }
 // Compares a freshly-fetched weekly-high-scores top5 against the last time THIS SAME
@@ -1284,7 +1284,7 @@ function weekTopPlayersListHTML(top5){
   return top5.length ? top5.map((p,i) => `
     <div class="lb-row" style="align-items:flex-start;">
       <span>
-        <div>#${i+1} ${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></div>
+        <div>${esc(p.name)} <span style="color:var(--text-dim);">${p.position}${p.team ? ' · ' + esc(p.team) : ''}</span></div>
         <div class="player-score-pickers" style="margin-top:3px;padding-top:0;border-top:none;">Picked by: ${p.pickers.length ? p.pickers.map(esc).join(', ') : '—'}</div>
       </span>
       <b style="color:var(--purple);white-space:nowrap;">${fmtPts(p.score)} pts</b>
