@@ -1075,13 +1075,18 @@ function render(){
   const navChanged = navKey !== lastRenderKey;
   lastRenderKey = navKey;
   saveNavState();
+  // Captured before the shell render below, since renderFAQ() clears jumpToDisclaimersFaq
+  // as soon as it consumes it -- the flag would already read false by the time we get to
+  // the scroll-to-top check otherwise, and this scrollTo(0,0) would stomp the scrollIntoView
+  // renderFAQ just did to bring the disclaimers item into view.
+  const wasJumpingToFaq = jumpToDisclaimersFaq;
   if(screen === 'loading'){ app.innerHTML = `<div class="center">Loading…</div>`; return; }
   if(screen === 'auth'){ renderAuth(); }
   else if(screen === 'app'){
     if(currentContestId === null) renderHubShell();
     else renderContestShell();
   }
-  if(navChanged) window.scrollTo(0, 0);
+  if(navChanged && !wasJumpingToFaq) window.scrollTo(0, 0);
 }
 
 function renderAuth(){
