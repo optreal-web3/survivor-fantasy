@@ -278,6 +278,11 @@ let session = null, profile = null;
 let contests = [];          // every non-draft contest, for the Lobby list
 let myEntries = {};         // contest_id -> this player's contest_entries row (only contests they've joined)
 let currentContestId = null, currentContest = null, currentEntry = null;
+// This contest's real start week (min contest_weeks.week_number), loaded alongside
+// currentContest by loadCurrentContest() -- needed to resolve the second-chance rebuy's
+// contest-wide eligibility cutoff (start week + second_chance_window_weeks - 1), the same
+// way request_second_chance() resolves it server-side. null until a contest is entered.
+let currentContestStartWeek = null;
 // Set true only by the footer "Disclaimers" link so renderFAQ knows to auto-expand
 // and scroll to the last FAQ item; reset after use so normal FAQ-tab visits (bottom
 // nav, etc.) land at the top with everything collapsed as usual.
@@ -698,7 +703,7 @@ function dkScoringHTML(idSuffix){
   const id = `dkScoring-${idSuffix}`;
   return `
     <div class="faq-item" style="border-bottom:none;padding-bottom:0;">
-      <div class="faq-q dk-scoring-q" data-target="${id}" style="font-size:12.5px;color:var(--text-dim);">Scoring: Draftkings NFL Classic full PPR - expand for details.</div>
+      <div class="faq-q dk-scoring-q" data-target="${id}" style="font-size:12.5px;color:var(--text-dim);">Draftkings NFL Classic full PPR Scoring Details</div>
       <div class="faq-a" id="${id}">
         <div class="tablewrap">
           <table class="scoring-table">
@@ -751,8 +756,12 @@ async function loadAllData(){
 // Contest-level: everything scoped to currentContestId, loaded once a
 // contest is entered from the Lobby (or created).
 async function loadCurrentContest(){
-  const { data } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
+  const [{ data }, { data: firstWeekRow }] = await Promise.all([
+    sb.from('contests').select('*').eq('id', currentContestId).maybeSingle(),
+    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).order('week_number').limit(1).maybeSingle()
+  ]);
   currentContest = data;
+  currentContestStartWeek = firstWeekRow?.week_number ?? null;
   lineupSlots = ((data && data.roster_slots) || []).slice().sort((a,b) => a.sort_order - b.sort_order);
 }
 async function refreshCurrentEntry(){
@@ -1929,17 +1938,21 @@ async function renderHome(body){
   if(contestRow) currentContest = contestRow;
   const threshold = contestRow?.weekly_threshold ?? 100;
   const isEliminator = contestRow?.game_type === 'eliminator';
-  // Second-chance rebuy status line shown on the Week recap card below (next to
-  // Threshold to advance / How you survive and the Scoring accordion) -- a quick
-  // contest-level fact independent of any one week, same spot the DK scoring
-  // reference already lives. Not offered at all when second_chance_window_weeks
-  // <= 0; once used it stays "Already used" for good (second_chance_used never
-  // resets -- see the contest_entries column comment).
+  // Second-chance rebuy status line shown on the Week recap card below (above the DK
+  // scoring accordion) -- a quick contest-level fact independent of any one week, same
+  // spot the DK scoring reference already lives. Not offered at all when
+  // second_chance_window_weeks <= 0; once used it stays "Already used" for good
+  // (second_chance_used never resets -- see the contest_entries column comment) --
+  // this label never disappears, it just changes state.
   const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
   const scRebuyLabel = scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes');
+  // The "(only available during first N weeks)" qualifier is folded into the same line
+  // instead of a separate paragraph below it -- only shown while it's still actionable
+  // information (offered, not yet used); once used or not offered it'd just be noise.
+  const scWindowNote = (scWindowWeeks > 0 && !currentEntry?.second_chance_used)
+    ? ` (only available during first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'})` : '';
   const secondChanceStatHTML = `
-    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scRebuyLabel}</b></div>
-    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Can only be used if eliminated during this contest's first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
+    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy${scWindowNote}</span><b>${scRebuyLabel}</b></div>`;
 
   let statusHTML = '';
   if(!currentEntry){
@@ -1963,8 +1976,19 @@ async function renderHome(body){
     // counter) -- decided, not something more uses will be added to.
     // (scWindowWeeks itself is computed once, above, for the recap card's
     // own second-chance status line -- reused here rather than redone.)
+    // Two independent checks, both required, mirroring request_second_chance() exactly:
+    // (1) the elimination itself has to have happened within the contest's own
+    // eligibility window (start week + second_chance_window_weeks - 1) -- this is the
+    // "first N weeks" the recap card's status line refers to, and is NOT the same number
+    // as scDeadlineWeek below; (2) a personal, one-week grace period after THIS player's
+    // own elimination (eliminated_week + 1) to actually request it. A contest-wide
+    // eligibility check was previously missing here -- the button could show (and only
+    // fail server-side on click) for a player eliminated too late in the season to
+    // qualify, even while still inside their own personal grace period.
     const scDeadlineWeek = currentEntry.eliminated_week + 1;
-    const scWindowOpen = scWindowWeeks > 0 && !!currentWeek && currentWeek.week_number <= scDeadlineWeek;
+    const scCutoffWeek = currentContestStartWeek !== null ? currentContestStartWeek + scWindowWeeks - 1 : null;
+    const scEligibleByCutoff = scCutoffWeek !== null && currentEntry.eliminated_week <= scCutoffWeek;
+    const scWindowOpen = scWindowWeeks > 0 && scEligibleByCutoff && !!currentWeek && currentWeek.week_number <= scDeadlineWeek;
     if(currentEntry.second_chance_requested_at){
       statusHTML = `
         <div class="card">
@@ -1979,7 +2003,7 @@ async function renderHome(body){
           <h3>You're out</h3>
           <p>Eliminated in week ${currentEntry.eliminated_week}.</p>
           <button id="useSecondChanceBtn" style="margin-top:10px;">Use second-chance rebuy</button>
-          <p class="estimate-note">Available through week ${scDeadlineWeek} only — same entry fee, added to the prize pool.</p>
+          <p class="estimate-note">Available through week ${scDeadlineWeek} only (one week after your own elimination) — same entry fee, added to the prize pool.</p>
           <div id="scConfirmArea"></div>
         </div>`;
     } else {
@@ -2068,8 +2092,8 @@ async function renderHome(body){
         ${isEliminator
           ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
           : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
-        ${dkScoringHTML('recap')}
         ${secondChanceStatHTML}
+        ${dkScoringHTML('recap')}
       </div>`;
   }
 
