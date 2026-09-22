@@ -55,15 +55,21 @@
     --bg-grad-end:#242424;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;overflow-x:hidden;}
+  /* overflow-x:hidden here would clip horizontal overflow too, but -- because CSS treats
+     "hidden" on one axis and the other axis's default "visible" as a mismatched pair -- it also
+     silently promotes overflow-y to "auto" behind the scenes, which breaks #navMount's
+     position:sticky (a sticky element needs the viewport itself to be the scrolling container,
+     not an auto-overflow ancestor). overflow-x:clip avoids that promotion (clip and visible are
+     treated as the same "doesn't need its own scroll container" category) while still clipping
+     horizontal overflow exactly the same as hidden did. */
+  html,body{margin:0;padding:0;overflow-x:clip;}
   body{background:var(--bg);color:var(--text);font-family:'Inter',-apple-system,sans-serif;min-height:100vh;min-height:100dvh;background-image:linear-gradient(180deg, var(--bg) 0%, var(--bg-grad-end) 100%);background-attachment:fixed;}
-  /* .app-nav is fixed and takes no space in the flow, so this top padding is just normal
-     breathing room between whatever's above it (the hero banner, in normal flow -- see
-     #heroBanner below) and the first card/header below -- also the gap between the fixed nav
-     and that content once scrolled far enough for the nav to be sitting right above it. Bottom
-     padding adds the device's own bottom safe-area inset (home indicator / rounded corners) on
-     top of normal breathing room, since nothing's fixed to the bottom of the viewport to
-     account for that clearance on its own. */
+  /* #navMount (sticky, full-bleed -- see its own comment below) sits outside .wrap just like
+     #heroBanner does, so this top padding is just the breathing room between #navMount's bottom
+     edge and .wrap's first real content (the app-header brand logo), not a header-height
+     calculation. Bottom padding adds the device's own bottom safe-area inset (home indicator /
+     rounded corners) on top of normal breathing room, since nothing's fixed to the bottom of the
+     viewport to account for that clearance on its own. */
   .wrap{max-width:640px;margin:0 auto;padding:18px 14px calc(24px + env(safe-area-inset-bottom));width:100%;}
   h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
   h1{font-size:26px;line-height:1.15;}
@@ -94,14 +100,23 @@
   .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
   .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
   .sc-icon{width:13px;height:13px;color:var(--pending);vertical-align:-2px;flex:0 0 auto;}
-  /* Always fixed to the very top of the viewport (top:0, not tied to the banner's height --
-     the banner is normal-flow now, see #heroBanner below, so the nav no longer needs to track
-     it) -- was fixed to the bottom of the viewport; moved to the top so it stays visible while
-     the page scrolls instead of scrolling past it, even once the banner above it has scrolled
-     out of view. safe-area-inset-top (not -bottom, now that this is a top bar) clears the
-     device's own notch/status bar in standalone/full-screen mode. */
-  .app-nav{position:fixed;left:0;right:0;top:0;max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:calc(6px + env(safe-area-inset-top)) 4px 6px;z-index:51;}
-  @media (min-width:660px){ .app-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:0 0 12px 12px;} }
+  /* #navMount is the actual sticky/full-bleed element -- position:sticky, not fixed, so it
+     starts in normal flow immediately below #heroBanner (flush, no gap) and only pins itself
+     once scrolling would otherwise carry it above the viewport's top edge; it un-sticks again
+     only once .wrap (its next sibling, containing everything below it) finishes scrolling past,
+     which in practice means it stays pinned for the whole rest of the page. Full width (not
+     capped at 640px like .wrap/.hero-banner's own content) so its background spans edge-to-edge
+     on wide screens -- capping it there left plain body background visible on both sides once
+     scrolled past the banner, which read as a stray dark bar rather than part of the app's
+     chrome. was fixed to the bottom of the viewport originally, then briefly fixed permanently
+     to the top (pinned even while the banner above it was still fully in view, which ate too
+     much of a small phone's screen); this is the middle ground -- pinned only once it would
+     otherwise scroll out of view. safe-area-inset-top clears the device's own notch/status bar
+     in standalone/full-screen mode, on both the sticky offset and the inner padding, since the
+     nav can be sitting flush at the very top of the viewport in either its stuck or unstuck
+     state depending on scroll position. */
+  #navMount{position:sticky;top:0;width:100%;background:var(--surface);border-bottom:1px solid var(--border);z-index:51;}
+  .app-nav{display:flex;max-width:640px;margin:0 auto;padding:calc(6px + env(safe-area-inset-top)) 4px 6px;}
   .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
   .bnav-item.active{color:var(--purple);}
   .bnav-item .icon{line-height:1;}
@@ -219,15 +234,11 @@
      the three links in the same row didn't match. */
   .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;margin:0;font-family:'Inter';font-size:13px;font-weight:400;width:auto;touch-action:manipulation;}
   .footer-divider-icon{width:10px;height:10px;color:var(--text-dim);flex:0 0 auto;}
-  /* Normal document flow now (was position:fixed, pinned above .app-nav) -- scrolls away with
-     the rest of the page instead of staying on screen, per the same reasoning .app-nav stays
-     fixed on its own: a banner that's always taking up screen space reads fine at the top of a
-     tab, less fine permanently eating into a small phone's viewport while scrolling a long list
-     of cards. margin-top approximates .app-nav's own rendered height (same ~60px + safe-area
-     approximation .wrap's padding uses) so the banner starts flush below the fixed nav on
-     initial load/scroll-to-top, the same visual arrangement as before, just no longer pinned
-     there once the page scrolls. */
-  #heroBanner{width:100%;margin-top:calc(60px + env(safe-area-inset-top));}
+  /* Normal document flow (not fixed/sticky) -- scrolls away with the rest of the page. #navMount
+     immediately below it is what stays pinned once scrolled past (see its own CSS comment); the
+     banner itself just needs no special positioning at all, since it's simply the first thing on
+     the page. */
+  #heroBanner{width:100%;}
   .hero-banner{position:relative;width:100%;height:15vh;height:clamp(55px,15dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;}
   .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
@@ -241,6 +252,7 @@
 </head>
 <body>
 <div id="heroBanner"></div>
+<div id="navMount"></div>
 <div class="wrap">
   <div id="banner"></div>
   <div id="app"><div class="center">Loading…</div></div>
@@ -399,7 +411,11 @@ const ICON_PATHS = {
   legend: '<path d="M12 6.2c-1.9-1.3-4.3-2-6.8-2v12.6c2.5 0 4.9.7 6.8 2 1.9-1.3 4.3-2 6.8-2V4.2c-2.5 0-4.9.7-6.8 2Z"/><path d="M12 6.2v12.6"/>',
   pencil: '<path d="M4 20l.7-3.9L15.8 5a1.6 1.6 0 0 1 2.3 0l0.9 0.9a1.6 1.6 0 0 1 0 2.3L7.9 19.3 4 20Z"/><path d="M14.1 6.7l3.2 3.2"/>',
   flair: '<ellipse cx="12" cy="12" rx="9" ry="5.5"/><path d="M5.5 12h13"/><path d="M9 10v1.2M9 13.8v1.2M12 9.3v1.4M12 13.3v1.4M15 10v1.2M15 13.8v1.2"/>',
-  admin: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2-1.2L14 3h-4l-.5 2.6a7.4 7.4 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2 1.2L10 21h4l.5-2.6a7.4 7.4 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/>'
+  admin: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2-1.2L14 3h-4l-.5 2.6a7.4 7.4 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2 1.2L10 21h4l.5-2.6a7.4 7.4 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/>',
+  // A left/back arrow -- distinct from `home` (used for this contest's own Home tab) since the
+  // contest-level nav shows both side by side: "Hub" needs to read as "leave this contest, back
+  // to the lobby," not as another flavor of "home."
+  hub: '<path d="M11 19l-7-7 7-7"/><path d="M4 12h16"/>'
 };
 function tabIcon(key){
   return `<svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[key] || ''}</svg>`;
@@ -1138,19 +1154,30 @@ function renderHubShell(){
   if(profile?.is_platform_admin) bottomNavTabs.push(['platformAdmin', tabIcon('admin'), 'Platform Admin']);
   if(!['hub','legend','faq','platformAdmin'].includes(activeTab)) activeTab = 'hub';
 
+  document.getElementById('navMount').innerHTML = `
+    <nav class="app-nav">
+      ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
+    </nav>
+  `;
   app.innerHTML = `
     <div class="app-header hub-header"><img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games"></div>
     <div id="tabBody"></div>
     <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association.</div>
     ${footerLinksRowHTML('disclaimersLinkHub', [])}
-    <nav class="app-nav">
-      ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
-    </nav>
   `;
   document.getElementById('signOutBtn').onclick = signOut;
   document.getElementById('disclaimersLinkHub').onclick = () => { jumpToDisclaimersFaq = true; activeTab = 'faq'; render(); };
+  // 'hub' is special-cased here (not just in the contest shell's copy of this same delegation)
+  // so this exact wiring works unchanged wherever a data-tab="hub" element shows up -- currently
+  // just this shell's own Hub tab (already a same-shell, no-op here since currentContestId is
+  // already null), but this keeps both copies of the delegation identical rather than only
+  // handling it on one side.
   document.querySelectorAll('[data-tab]').forEach(el => {
-    el.onclick = () => { activeTab = el.dataset.tab; render(); };
+    el.onclick = () => {
+      if(el.dataset.tab === 'hub') currentContestId = null;
+      activeTab = el.dataset.tab;
+      render();
+    };
   });
 
   const body = document.getElementById('tabBody');
@@ -1783,18 +1810,30 @@ async function renderPlatformAdmin(body){
 function renderContestShell(){
   const picksBadge = (currentWeek && currentEntry?.alive && currentEntry?.is_approved && lineupSlots.length)
     ? ` ${myPicks.length}/${lineupSlots.length}` : '';
-  // Bottom nav carries the 4 primary, time-sensitive tabs. Everything else
-  // (reference material + account actions) stays in the footer-links row
-  // further down the page -- keeps the fixed bar to a size that still fits
-  // comfortably on a narrow phone at a legible font size.
+  // Nav carries the 4 primary, time-sensitive tabs plus Hub (a way back to the lobby, not a
+  // contest tab). Reference material + the account actions that aren't wayfinding stay in the
+  // footer-links row further down the page instead -- keeps the nav itself to a size that still
+  // fits comfortably on a narrow phone at a legible font size.
+  // Hub is included here, not just left to the header's own back-link button, since that
+  // button scrolls away with the header once #navMount is stuck at the top -- players were
+  // losing track of how to back out of a contest with no persistent way back to the lobby.
+  // tabIcon('hub') (a back arrow) is deliberately not tabIcon('home') -- this row already has
+  // this contest's own "Home" tab, and two house icons side by side with different labels
+  // would read as a mistake rather than two different destinations.
   const bottomNavTabs = [
     ['home',tabIcon('home'),'Home'], ['picks',tabIcon('picks'),`Picks${picksBadge}`],
-    ['standings',tabIcon('standings'),'Standings'], ['prizes',tabIcon('prizes'),'Prizes']
+    ['standings',tabIcon('standings'),'Standings'], ['prizes',tabIcon('prizes'),'Prizes'],
+    ['hub',tabIcon('hub'),'Hub']
   ];
   const footerTabs = [];
   if(currentEntry?.is_commissioner) footerTabs.push(['admin','Admin']);
   if(!['home','picks','standings','prizes','admin'].includes(activeTab)) activeTab = 'home';
 
+  document.getElementById('navMount').innerHTML = `
+    <nav class="app-nav">
+      ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
+    </nav>
+  `;
   app.innerHTML = `
     <div class="app-header">
       <img class="brand-icon" src="images/degen-king-games-survivor.png" alt="Degen King Games">
@@ -1808,17 +1847,21 @@ function renderContestShell(){
     <div id="tabBody"></div>
     <div class="footer-disclaimer">DKG is an independent, unofficial fantasy sports game -- not affiliated with the NFL or any other league, team, or player association.</div>
     ${footerLinksRowHTML('disclaimersLinkContest', footerTabs)}
-    <nav class="app-nav">
-      ${bottomNavTabs.map(([id,icon,label]) => `<div class="bnav-item ${activeTab===id?'active':''}" data-tab="${id}"><span class="icon">${icon}</span><span class="label">${label}</span></div>`).join('')}
-    </nav>
   `;
   document.getElementById('signOutBtn').onclick = signOut;
   document.getElementById('backToHubBtn').onclick = () => { currentContestId = null; activeTab = 'hub'; render(); };
   // Disclaimers link jumps back to the Hub's FAQ tab (this shell has no FAQ tab of
   // its own), unlike the other data-tab links here which stay within this shell.
   document.getElementById('disclaimersLinkContest').onclick = () => { jumpToDisclaimersFaq = true; currentContestId = null; activeTab = 'faq'; render(); };
+  // data-tab="hub" (the new nav item above) needs to actually leave this contest, not just
+  // switch activeTab within it -- same handling backToHubBtn already does, applied generically
+  // so this one delegation loop covers both.
   document.querySelectorAll('[data-tab]').forEach(el => {
-    el.onclick = () => { activeTab = el.dataset.tab; render(); };
+    el.onclick = () => {
+      if(el.dataset.tab === 'hub') currentContestId = null;
+      activeTab = el.dataset.tab;
+      render();
+    };
   });
 
   const body = document.getElementById('tabBody');
