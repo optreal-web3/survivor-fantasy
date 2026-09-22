@@ -275,7 +275,7 @@ try { history.scrollRestoration = 'manual'; } catch(e){ /* unsupported in some o
 
 // ---------- GLOBAL STATE ----------
 let session = null, profile = null;
-let contests = [];          // every non-draft contest, for the Hub list
+let contests = [];          // every non-draft contest, for the Lobby list
 let myEntries = {};         // contest_id -> this player's contest_entries row (only contests they've joined)
 let currentContestId = null, currentContest = null, currentEntry = null;
 // Set true only by the footer "Disclaimers" link so renderFAQ knows to auto-expand
@@ -320,7 +320,7 @@ const weekTopPlayersCache = {}; // `${contestId}:${weekNumber}` -> top-5 [{name,
 // re-renders so it doesn't jump around while editing. Reset to null (re-derived fresh) whenever
 // a contest is (re-)entered or a week gets finalized -- see loadContestData() and renderAdmin().
 let adminScoreWeek = null;
-let screen = 'loading', activeTab = 'hub';
+let screen = 'loading', activeTab = 'lobby';
 let otpSent = false, pendingEmail = null, pendingName = null, otpCooldownUntil = 0;
 let otpResendTimer = null; // interval id for the "Resend code" countdown on the code-entry screen
 let nflTeams = []; // reference data: all 32 teams (code/name/division/colors/hero_logo_path), loaded once per session
@@ -343,7 +343,7 @@ function guard(fn){ return async (...a) => { try { await fn(...a); } catch(e){ s
 // real-money implication. currencyForContest() resolves which one a given
 // contest is (is_free wins over whatever's stored in contests.currency,
 // since "free" isn't itself a stored currency value) -- used where the
-// distinction still matters functionally (e.g. the Hub card's fee line).
+// distinction still matters functionally (e.g. the Lobby card's fee line).
 // There's no currency badge/pill anywhere in the UI: every amount is shown
 // as a plain number via fmtAmt() with no currency symbol or label, since
 // DGEN is the only currency contests are actually denominated in today --
@@ -365,7 +365,7 @@ function fmtAmt(n){
 // unselectable in the dropdown so players can see what's coming without
 // being able to create a contest that can't actually be played yet.
 // GAME_TYPES is the two current modes; gameTypeLabel() is used anywhere a
-// contest's mode needs a short display name (Hub cards, Admin tab, etc).
+// contest's mode needs a short display name (Lobby cards, Admin tab, etc).
 // Display names are branded -- Kingmaker Gauntlet (threshold_survivor) and
 // KnightFall Guillotine (eliminator) -- while game_type values, function
 // names, and code comments keep the original survivor/eliminator
@@ -376,11 +376,11 @@ const SPORTS = [
   { value: 'mlb', label: 'MLB', enabled: false },
   { value: 'mma', label: 'MMA', enabled: false }
 ];
-// Each mode's hubBlurb is the longer description on the Hub's "Game Modes"
+// Each mode's hubBlurb is the longer description on the Lobby's "Game Modes"
 // card; reminder is the short line shown under the Create Contest form's
-// own game-mode dropdown -- kept separate so the Hub carries the full
+// own game-mode dropdown -- kept separate so the Lobby carries the full
 // explanation while the form just jogs the memory of someone who's already
-// read it. img is the path to this mode's Hub artwork (rendered by
+// read it. img is the path to this mode's Lobby artwork (rendered by
 // gameModesCardHTML() as a 100x100 <img>); kept as a full path rather than
 // a filename stem since the two modes' art isn't in the same format.
 const GAME_TYPES = [
@@ -412,10 +412,10 @@ const ICON_PATHS = {
   pencil: '<path d="M4 20l.7-3.9L15.8 5a1.6 1.6 0 0 1 2.3 0l0.9 0.9a1.6 1.6 0 0 1 0 2.3L7.9 19.3 4 20Z"/><path d="M14.1 6.7l3.2 3.2"/>',
   flair: '<ellipse cx="12" cy="12" rx="9" ry="5.5"/><path d="M5.5 12h13"/><path d="M9 10v1.2M9 13.8v1.2M12 9.3v1.4M12 13.3v1.4M15 10v1.2M15 13.8v1.2"/>',
   admin: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2-1.2L14 3h-4l-.5 2.6a7.4 7.4 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2 1.2L10 21h4l.5-2.6a7.4 7.4 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"/>',
-  // A left/back arrow -- distinct from `home` (used for this contest's own Home tab) since the
-  // contest-level nav shows both side by side: "Hub" needs to read as "leave this contest, back
-  // to the lobby," not as another flavor of "home."
-  hub: '<path d="M11 19l-7-7 7-7"/><path d="M4 12h16"/>'
+  // Two overlapping people -- distinct from `home` (used for the contest-level Home tab) so
+  // neither the Lobby-level nav's own Lobby tab nor the contest-level nav's Lobby tab reads as
+  // another flavor of "home."
+  lobby: '<circle cx="8.3" cy="8" r="3"/><path d="M2.8 19.5v-1.3a4 4 0 0 1 4-4h3a4 4 0 0 1 1.8.42"/><circle cx="15.8" cy="9.3" r="3.4"/><path d="M9.6 20v-1.6a4.4 4.4 0 0 1 4.4-4.4h3.6a4.4 4.4 0 0 1 4.4 4.4V20"/>'
 };
 function tabIcon(key){
   return `<svg class="ticon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[key] || ''}</svg>`;
@@ -560,7 +560,7 @@ function applyThemeAccent(){
 }
 
 // "Playing as <name>" header + its pencil-to-edit and flair-picker
-// affordances, shared across the Hub and every contest tab. Both edit
+// affordances, shared across the Lobby and every contest tab. Both edit
 // forms render into separate #nameEditArea / #flairEditArea areas below
 // wherever this is used, rather than inline, so they aren't squeezed into
 // a narrow column.
@@ -720,7 +720,7 @@ function wireDkScoringAccordion(){
 }
 
 // ---------- DATA LOADING ----------
-// Hub-level: who am I, and what contests exist / have I joined.
+// Lobby-level: who am I, and what contests exist / have I joined.
 async function loadProfile(){
   const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
   profile = data;
@@ -749,7 +749,7 @@ async function loadAllData(){
 }
 
 // Contest-level: everything scoped to currentContestId, loaded once a
-// contest is entered from the Hub (or created).
+// contest is entered from the Lobby (or created).
 async function loadCurrentContest(){
   const { data } = await sb.from('contests').select('*').eq('id', currentContestId).maybeSingle();
   currentContest = data;
@@ -964,7 +964,7 @@ function weekTopPlayersListHTML(top5){
     : '<p>No scores yet.</p>';
 }
 // Called once, right after entering (or creating, or re-entering) a
-// contest from the Hub -- loads everything renderHome/renderPicks/etc need.
+// contest from the Lobby -- loads everything renderHome/renderPicks/etc need.
 // loadCurrentContest/refreshCurrentEntry/loadCurrentWeek only depend on
 // currentContestId/session (already set by the time this runs), not on each
 // other's results, so they run together in one Promise.all round trip.
@@ -975,7 +975,7 @@ async function loadContestData(){
 }
 
 // ---------- NAV PERSISTENCE ----------
-// Keeps a page/tab reload from dumping the player back to the Hub. sessionStorage
+// Keeps a page/tab reload from dumping the player back to the Lobby. sessionStorage
 // (not localStorage) on purpose -- it survives an in-tab reload but clears once the tab
 // is actually closed, so this never resurrects a days-old contest/tab on a fresh visit.
 // Written on every render() (cheap: two small fields) and read back once, on load, by
@@ -987,7 +987,7 @@ function saveNavState(){
 }
 // Called once, right after loadAllData(), on both a fresh sign-in and a page reload
 // (myEntries is what gates this -- see below). Restores whichever contest/tab this
-// browser tab was on, so a refresh lands back where the player was instead of the Hub.
+// browser tab was on, so a refresh lands back where the player was instead of the Lobby.
 async function restoreNavState(){
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(NAV_STATE_KEY)); } catch(e){ return; }
@@ -1004,7 +1004,7 @@ async function restoreNavState(){
     if(activeTab === 'admin' && !currentEntry?.is_commissioner) activeTab = 'home';
   } else if(!saved.contestId && ['legend','faq','platformAdmin'].includes(saved.tab)){
     activeTab = saved.tab;
-    if(activeTab === 'platformAdmin' && !profile?.is_platform_admin) activeTab = 'hub';
+    if(activeTab === 'platformAdmin' && !profile?.is_platform_admin) activeTab = 'lobby';
   }
 }
 
@@ -1038,10 +1038,10 @@ async function signOut(){
   await sb.auth.signOut();
   session = null; profile = null; contests = []; myEntries = {};
   currentContestId = null; currentContest = null; currentEntry = null;
-  screen = 'auth'; activeTab = 'hub';
+  screen = 'auth'; activeTab = 'lobby';
   otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
   clearInterval(otpResendTimer);
-  saveGameModesCollapsed(false); // reset the Hub's Game Modes card back to expanded for next sign-in
+  saveGameModesCollapsed(false); // reset the Lobby's Game Modes card back to expanded for next sign-in
   renderHeroBanner();
   applyThemeAccent();
   render();
@@ -1146,13 +1146,13 @@ function renderOtpEntry(){
   };
 }
 
-// ---------- HUB (lobby of contests) ----------
+// ---------- HUB (renderHub/renderHubShell -- the Lobby, where all a player's contests are homed) ----------
 function renderHubShell(){
   const bottomNavTabs = [
-    ['hub', tabIcon('home'), 'Hub'], ['faq', tabIcon('faq'), 'FAQ'], ['legend', tabIcon('legend'), 'DKG']
+    ['lobby', tabIcon('lobby'), 'Lobby'], ['faq', tabIcon('faq'), 'FAQ'], ['legend', tabIcon('legend'), 'DKG']
   ];
   if(profile?.is_platform_admin) bottomNavTabs.push(['platformAdmin', tabIcon('admin'), 'Platform Admin']);
-  if(!['hub','legend','faq','platformAdmin'].includes(activeTab)) activeTab = 'hub';
+  if(!['lobby','legend','faq','platformAdmin'].includes(activeTab)) activeTab = 'lobby';
 
   document.getElementById('navMount').innerHTML = `
     <nav class="app-nav">
@@ -1167,21 +1167,21 @@ function renderHubShell(){
   `;
   document.getElementById('signOutBtn').onclick = signOut;
   document.getElementById('disclaimersLinkHub').onclick = () => { jumpToDisclaimersFaq = true; activeTab = 'faq'; render(); };
-  // 'hub' is special-cased here (not just in the contest shell's copy of this same delegation)
-  // so this exact wiring works unchanged wherever a data-tab="hub" element shows up -- currently
-  // just this shell's own Hub tab (already a same-shell, no-op here since currentContestId is
+  // 'lobby' is special-cased here (not just in the contest shell's copy of this same delegation)
+  // so this exact wiring works unchanged wherever a data-tab="lobby" element shows up -- currently
+  // just this shell's own Lobby tab (already a same-shell, no-op here since currentContestId is
   // already null), but this keeps both copies of the delegation identical rather than only
   // handling it on one side.
   document.querySelectorAll('[data-tab]').forEach(el => {
     el.onclick = () => {
-      if(el.dataset.tab === 'hub') currentContestId = null;
+      if(el.dataset.tab === 'lobby') currentContestId = null;
       activeTab = el.dataset.tab;
       render();
     };
   });
 
   const body = document.getElementById('tabBody');
-  if(activeTab === 'hub') return renderHub(body);
+  if(activeTab === 'lobby') return renderHub(body);
   if(activeTab === 'legend') return renderLegend(body);
   if(activeTab === 'faq') return renderFAQ(body);
   if(activeTab === 'platformAdmin') return renderPlatformAdmin(body);
@@ -1190,7 +1190,7 @@ function renderHubShell(){
 // Registration open/closed is independent of contest lifecycle (status) --
 // a commissioner can close registration to new players at any point (e.g.
 // right when the contest starts) via commissioner_set_registration_open,
-// without archiving or otherwise touching the contest's status. The Hub
+// without archiving or otherwise touching the contest's status. The Lobby
 // card's status line is just that toggle's state, in plain words.
 function contestCardHTML(c){
   const entry = myEntries[c.id];
@@ -1223,10 +1223,10 @@ function contestCardHTML(c){
     </div>`;
 }
 
-// Hub's "Game Modes" reference card -- sits between "Your contests" and
+// Lobby's "Game Modes" reference card -- sits between "Your contests" and
 // "Start a contest" so a player browsing open contests (e.g. seeing
 // "Kingmaker Gauntlet" or "KnightFall Guillotine" on a card) has somewhere
-// to learn how each mode plays before joining, without leaving the Hub.
+// to learn how each mode plays before joining, without leaving the Lobby.
 // Collapsed/expanded state persists per-device via localStorage (cleared
 // on sign-out in signOut()) so it stays out of the way once someone's
 // already read it, but starts expanded the first time. Reuses the same
@@ -1274,7 +1274,7 @@ function wireGameModesCard(){
   if(faqLink) faqLink.onclick = () => { activeTab = 'faq'; render(); };
 }
 
-// Hub's "Add to home screen" reference card -- a plus/minus accordion, same look as the FAQ
+// Lobby's "Add to home screen" reference card -- a plus/minus accordion, same look as the FAQ
 // tab and Game Modes card above, but closed by default (one-time reference, not something a
 // returning player needs open every visit -- no localStorage persistence either, same as the
 // FAQ tab's own items). iOS and Android use genuinely different install flows (Safari's Share
@@ -1469,7 +1469,7 @@ function renderCreateContestForm(area){
     const mode = GAME_TYPES.find(g => g.value === gt);
     document.getElementById('cc_reuseWrap').style.display = isEliminator ? 'flex' : 'none';
     document.getElementById('cc_thresholdWrap').style.display = isEliminator ? 'none' : 'block';
-    // Short reminder only -- the full explanation now lives on the Hub's
+    // Short reminder only -- the full explanation now lives on the Lobby's
     // Game Modes card (gameModesCardHTML() above), which someone has
     // presumably already seen before reaching this form.
     document.getElementById('cc_gameTypeNote').textContent = mode ? `${mode.label}: ${mode.reminder}` : '';
@@ -1650,7 +1650,7 @@ async function renderPlatformAdmin(body){
 
     <div class="card">
       <h3>Archived contests</h3>
-      <p>Hidden from the Hub for everyone. Nothing is deleted when a contest is archived -- restore one below if it was archived by mistake or should run again.</p>
+      <p>Hidden from the Lobby for everyone. Nothing is deleted when a contest is archived -- restore one below if it was archived by mistake or should run again.</p>
       ${archivedContests.length ? archivedContests.map(c => `
         <div class="lb-row" style="flex-wrap:wrap;">
           <span>
@@ -1711,7 +1711,7 @@ async function renderPlatformAdmin(body){
       const name = btn.dataset.name;
       document.getElementById('padminConfirm').innerHTML = `
         <div class="card" style="border-color:var(--caution);">
-          <p style="color:var(--text);">Archive "${esc(name)}"? This hides it from the Hub for everyone -- no data is deleted, and a Global Admin can restore it later.</p>
+          <p style="color:var(--text);">Archive "${esc(name)}"? This hides it from the Lobby for everyone -- no data is deleted, and a Global Admin can restore it later.</p>
           <div class="row" style="gap:8px;margin-top:6px;">
             <button class="small secondary" id="cancelPadminArchive" style="flex:1;">Cancel</button>
             <button class="small warn" id="confirmPadminArchive" style="flex:1;">Archive contest</button>
@@ -1732,7 +1732,7 @@ async function renderPlatformAdmin(body){
     btn.onclick = guard(async () => {
       const { error } = await sb.rpc('platform_admin_restore_contest', { p_contest_id: btn.dataset.padminRestore });
       if(error){ showBanner(error.message); return; }
-      showBanner('Contest restored — it\'s back on the Hub.');
+      showBanner('Contest restored — it\'s back on the Lobby.');
       await loadContests();
       renderPlatformAdmin(body);
     });
@@ -1810,20 +1810,20 @@ async function renderPlatformAdmin(body){
 function renderContestShell(){
   const picksBadge = (currentWeek && currentEntry?.alive && currentEntry?.is_approved && lineupSlots.length)
     ? ` ${myPicks.length}/${lineupSlots.length}` : '';
-  // Nav carries the 4 primary, time-sensitive tabs plus Hub (a way back to the lobby, not a
-  // contest tab). Reference material + the account actions that aren't wayfinding stay in the
-  // footer-links row further down the page instead -- keeps the nav itself to a size that still
-  // fits comfortably on a narrow phone at a legible font size.
-  // Hub is included here, not just left to the header's own back-link button, since that
+  // Nav carries the 4 primary, time-sensitive tabs plus Lobby (a way back to where all a
+  // player's contests are homed, not a contest tab). Reference material + the account actions
+  // that aren't wayfinding stay in the footer-links row further down the page instead -- keeps
+  // the nav itself to a size that still fits comfortably on a narrow phone at a legible font size.
+  // Lobby is included here, not just left to the header's own back-link button, since that
   // button scrolls away with the header once #navMount is stuck at the top -- players were
-  // losing track of how to back out of a contest with no persistent way back to the lobby.
-  // tabIcon('hub') (a back arrow) is deliberately not tabIcon('home') -- this row already has
-  // this contest's own "Home" tab, and two house icons side by side with different labels
-  // would read as a mistake rather than two different destinations.
+  // losing track of how to back out of a contest with no persistent way back to the Lobby.
+  // tabIcon('lobby') is deliberately not tabIcon('home') -- this row already has this contest's
+  // own "Home" tab, and two house icons side by side with different labels would read as a
+  // mistake rather than two different destinations.
   const bottomNavTabs = [
     ['home',tabIcon('home'),'Home'], ['picks',tabIcon('picks'),`Picks${picksBadge}`],
     ['standings',tabIcon('standings'),'Standings'], ['prizes',tabIcon('prizes'),'Prizes'],
-    ['hub',tabIcon('hub'),'Hub']
+    ['lobby',tabIcon('lobby'),'Lobby']
   ];
   const footerTabs = [];
   if(currentEntry?.is_commissioner) footerTabs.push(['admin','Admin']);
@@ -1840,7 +1840,7 @@ function renderContestShell(){
       <div style="max-width:100%;">
         <div class="contest-title-row">
           <h1 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${esc(currentContest?.name || 'Contest')}</h1>
-          <button class="back-link" id="backToHubBtn" type="button">‹ Hub</button>
+          <button class="back-link" id="backToLobbyBtn" type="button">‹ Lobby</button>
         </div>
       </div>
     </div>
@@ -1849,16 +1849,16 @@ function renderContestShell(){
     ${footerLinksRowHTML('disclaimersLinkContest', footerTabs)}
   `;
   document.getElementById('signOutBtn').onclick = signOut;
-  document.getElementById('backToHubBtn').onclick = () => { currentContestId = null; activeTab = 'hub'; render(); };
-  // Disclaimers link jumps back to the Hub's FAQ tab (this shell has no FAQ tab of
+  document.getElementById('backToLobbyBtn').onclick = () => { currentContestId = null; activeTab = 'lobby'; render(); };
+  // Disclaimers link jumps back to the Lobby's FAQ tab (this shell has no FAQ tab of
   // its own), unlike the other data-tab links here which stay within this shell.
   document.getElementById('disclaimersLinkContest').onclick = () => { jumpToDisclaimersFaq = true; currentContestId = null; activeTab = 'faq'; render(); };
-  // data-tab="hub" (the new nav item above) needs to actually leave this contest, not just
-  // switch activeTab within it -- same handling backToHubBtn already does, applied generically
+  // data-tab="lobby" (the nav item above) needs to actually leave this contest, not just
+  // switch activeTab within it -- same handling backToLobbyBtn already does, applied generically
   // so this one delegation loop covers both.
   document.querySelectorAll('[data-tab]').forEach(el => {
     el.onclick = () => {
-      if(el.dataset.tab === 'hub') currentContestId = null;
+      if(el.dataset.tab === 'lobby') currentContestId = null;
       activeTab = el.dataset.tab;
       render();
     };
@@ -2832,7 +2832,7 @@ async function renderPrizes(body){
 
 // Edit/add entries here as new questions come up — no other code needs to
 // change. Called with the current contest (for exact numbers) or null (at
-// the Hub level, before a specific contest is in view).
+// the Lobby level, before a specific contest is in view).
 function faqItems(contest){
   const isEliminator = contest?.game_type === 'eliminator';
   const thresholdLine = contest ? `${contest.weekly_threshold}+ points` : "each contest's own posted threshold";
@@ -2843,11 +2843,11 @@ function faqItems(contest){
     { q: "Is my email visible to other players?",
       a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
     { q: "Can I change my display name?",
-      a: "Yes — tap the pencil icon next to your name on the Hub, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
-    { q: "What's the difference between the Hub and a contest?",
-      a: "The Hub is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
+      a: "Yes — tap the pencil icon next to your name on the Lobby, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
+    { q: "What's the difference between the Lobby and a contest?",
+      a: "The Lobby is where you browse, join, and create contests. Once you're inside a contest, it has its own Home, Picks, Standings, and Prizes tabs, scoped just to that contest." },
     { q: "Can I join more than one contest at once?",
-      a: "Yes — sign up once, then join as many contests as you like from the Hub tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
+      a: "Yes — sign up once, then join as many contests as you like from the Lobby tab. Your picks, alive/eliminated status, and used-player list are all tracked separately per contest, so being eliminated in one doesn't affect another." },
     { q: "What's the difference between Kingmaker Gauntlet and KnightFall Guillotine?",
       a: "Kingmaker Gauntlet: survive week to week — your full team's combined score needs to clear a fixed weekly point threshold, or you're out. KnightFall Guillotine: there's no fixed number — each week, whoever has the lowest score(s) gets cut, with the pace worked out automatically so the contest always finishes with exactly one winner." },
     { q: "What score do I need to survive each week?",
@@ -3138,7 +3138,7 @@ async function renderAdmin(body){
 
     <div class="card" style="border-color:var(--elim);">
       <h3>Danger zone</h3>
-      <p>Archiving hides this contest from the Hub for everyone — no data is deleted, and a Global Admin can restore it later. Deleting is only available while nobody besides you has joined or picked in this contest, and permanently erases it.</p>
+      <p>Archiving hides this contest from the Lobby for everyone — no data is deleted, and a Global Admin can restore it later. Deleting is only available while nobody besides you has joined or picked in this contest, and permanently erases it.</p>
       <div class="row" style="gap:8px;margin-top:10px;">
         <button class="small warn" id="archiveContestBtn" style="flex:1;">Archive contest</button>
         <button class="small danger" id="deleteContestBtn" style="flex:1;" ${soleEntrant ? '' : 'disabled title="Other players have joined — archive instead"'}>Delete contest</button>
@@ -3301,7 +3301,7 @@ async function renderAdmin(body){
   document.getElementById('archiveContestBtn').onclick = () => {
     document.getElementById('dangerZoneConfirm').innerHTML = `
       <div class="confirm-box">
-        <p style="color:var(--text);">Archive "${esc(currentContest?.name || 'this contest')}"? This hides it from the Hub for everyone — no data is deleted, and a Global Admin can restore it later.</p>
+        <p style="color:var(--text);">Archive "${esc(currentContest?.name || 'this contest')}"? This hides it from the Lobby for everyone — no data is deleted, and a Global Admin can restore it later.</p>
         <div class="row" style="gap:8px;margin-top:6px;">
           <button class="small secondary" id="cancelArchive" style="flex:1;">Cancel</button>
           <button class="small warn" id="confirmArchive" style="flex:1;">Archive contest</button>
@@ -3311,8 +3311,8 @@ async function renderAdmin(body){
     document.getElementById('confirmArchive').onclick = guard(async () => {
       const { error } = await sb.rpc('commissioner_archive_contest', { p_contest_id: currentContestId });
       if(error){ showBanner(error.message); return; }
-      showBanner("Contest archived — it's hidden from the Hub. A Global Admin can restore it if needed.");
-      currentContestId = null; activeTab = 'hub';
+      showBanner("Contest archived — it's hidden from the Lobby. A Global Admin can restore it if needed.");
+      currentContestId = null; activeTab = 'lobby';
       await Promise.all([loadContests(), loadMyEntries()]);
       render();
     });
@@ -3333,7 +3333,7 @@ async function renderAdmin(body){
         const { error } = await sb.rpc('commissioner_delete_contest', { p_contest_id: currentContestId });
         if(error){ showBanner(error.message); return; }
         showBanner('Contest deleted.');
-        currentContestId = null; activeTab = 'hub';
+        currentContestId = null; activeTab = 'lobby';
         await Promise.all([loadContests(), loadMyEntries()]);
         render();
       });
@@ -3346,12 +3346,12 @@ async function renderAdmin(body){
 // sign-in -- also on background token refreshes and tab refocus. Tracking
 // which user's data is loaded (lastLoadedUserId) tells "genuinely a new
 // sign-in" apart from "same user, session object just refreshed" -- only
-// the former resets the screen back to the Hub and reloads everything.
+// the former resets the screen back to the Lobby and reloads everything.
 //
 // The automatic INITIAL_SESSION event (fired once on subscribe, reflecting
 // whatever session was already restored from storage) is skipped here --
 // the init IIFE below already handles that case with its own getSession()
-// call, so both firing would double the network work before the Hub
+// call, so both firing would double the network work before the Lobby
 // screen replaces "Loading…". Every later, real auth change (sign-in,
 // sign-out, token refresh) still reaches this listener as normal.
 let lastLoadedUserId = null;
@@ -3362,7 +3362,7 @@ sb.auth.onAuthStateChange(async (event, s) => {
     session = s;
     if(isNewUser){
       lastLoadedUserId = s.user.id;
-      currentContestId = null; activeTab = 'hub';
+      currentContestId = null; activeTab = 'lobby';
       await loadAllData();
       await restoreNavState();
       screen = 'app';
@@ -3380,7 +3380,7 @@ sb.auth.onAuthStateChange(async (event, s) => {
   if(existing){
     session = existing;
     lastLoadedUserId = existing.user.id;
-    currentContestId = null; activeTab = 'hub';
+    currentContestId = null; activeTab = 'lobby';
     await loadAllData();
     await restoreNavState(); // picks this tab back up where it left off, if a reload is what brought us here
     screen = 'app';
