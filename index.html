@@ -53,11 +53,11 @@
     --purple:#8B5CF6; --purple-rgb:139,92,246; --purple-dim:rgba(var(--purple-rgb),0.12); --accent-ink:#fff;
     --border:#262838;
     --bg-grad-end:#242424;
-    /* Live height of the fixed #heroBanner -- 0 when no flair team is chosen (the banner
-       renders empty), clamp(55px,10dvh,240px) once one is, kept in sync by renderHeroBanner().
-       .app-nav and .wrap both read this so the nav sits flush under the banner (whether or
-       not it's showing) and page content starts below both. */
-    --hero-h:0px;
+    /* Live height of the fixed #heroBanner -- clamp(55px,20dvh,240px), always (the banner
+       renders even with no flair team picked, using DKG's own default colors/watermark --
+       see renderHeroBanner()), kept in sync by that function. .app-nav and .wrap both read
+       this so the nav sits flush under the banner and page content starts below both. */
+    --hero-h:clamp(55px,20dvh,240px);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -66,9 +66,10 @@
      other -- see #heroBanner/.app-nav below): --hero-h for the banner's own live height, ~60px
      for the nav's rendered height (padding + icon + label -- not measured live, same
      approximation the old bottom-nav padding used), plus the device's own safe-area inset for
-     a notch/status bar. Bottom padding is just normal breathing room now that nothing's fixed
-     to the bottom of the viewport anymore. */
-  .wrap{max-width:640px;margin:0 auto;padding:calc(var(--hero-h) + 60px + env(safe-area-inset-top)) 14px 24px;width:100%;}
+     a notch/status bar. Bottom padding adds the device's bottom safe-area inset (home
+     indicator / rounded corners) on top of normal breathing room, since nothing's fixed to the
+     bottom of the viewport to account for that clearance anymore. */
+  .wrap{max-width:640px;margin:0 auto;padding:calc(var(--hero-h) + 60px + env(safe-area-inset-top)) 14px calc(24px + env(safe-area-inset-bottom));width:100%;}
   h1,h2{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:0.2px;margin:0;text-transform:uppercase;}
   h1{font-size:26px;line-height:1.15;}
   h2{font-size:20px;line-height:1.15;}
@@ -98,12 +99,11 @@
   .pill.pending{background:var(--pending-dim);color:var(--pending);border-color:var(--pending);}
   .pill.caution{background:var(--caution-dim);color:var(--caution);border-color:var(--caution);}
   .sc-icon{width:13px;height:13px;color:var(--pending);vertical-align:-2px;flex:0 0 auto;}
-  /* Sits fixed at the very top of the viewport, flush under #heroBanner (var(--hero-h) is 0
-     when no flair banner is showing, so the nav sits flush against the top edge itself in that
-     case) -- was fixed to the bottom of the viewport; moved to the top so it (and the flair
-     banner above it) stay visible while the page scrolls instead of the page scrolling past
-     them. safe-area-inset-top (not -bottom, now that this is a top bar) clears the device's own
-     notch/status bar in standalone/full-screen mode. */
+  /* Sits fixed at the very top of the viewport, flush under #heroBanner via var(--hero-h) --
+     was fixed to the bottom of the viewport; moved to the top so it (and the banner above it)
+     stay visible while the page scrolls instead of the page scrolling past them. safe-area-
+     inset-top (not -bottom, now that this is a top bar) clears the device's own notch/status
+     bar in standalone/full-screen mode. */
   .app-nav{position:fixed;left:0;right:0;top:var(--hero-h);max-width:640px;margin:0 auto;display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:calc(6px + env(safe-area-inset-top)) 4px 6px;z-index:51;}
   @media (min-width:660px){ .app-nav{border-left:1px solid var(--border);border-right:1px solid var(--border);border-radius:0 0 12px 12px;} }
   .bnav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:6px 2px;color:var(--text-dim);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;text-align:center;line-height:1.1;cursor:pointer;touch-action:manipulation;border-radius:8px;}
@@ -211,17 +211,32 @@
   .flair-tile img{width:18px;height:18px;border-radius:4px;object-fit:cover;flex:0 0 auto;}
   .footer-links{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:13px;}
   .footer-links a, .footer-links .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-weight:400;width:auto;touch-action:manipulation;}
-  .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);}
-  .footer-disclaimer{margin-top:10px;font-size:12px;color:var(--text-dim);line-height:1.4;}
+  /* Links stay left-justified above (an odd number of items -- Logout, sometimes Admin --
+     doesn't center well), but the contact/disclaimer lines are just plain text, and center
+     nicely regardless of how much of the wrapped disclaimer sentence ends up on the last line. */
+  .footer-contact{margin-top:10px;font-size:12px;color:var(--text-dim);text-align:center;}
+  .footer-disclaimer{margin-top:10px;font-size:12px;color:var(--text-dim);line-height:1.4;text-align:center;}
   .footer-disclaimer .flink{color:var(--text-dim);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0;font-family:'Inter';font-size:12px;font-weight:400;touch-action:manipulation;}
   /* #heroBanner (the mount div) is what's actually fixed to the top of the viewport --
      .hero-banner just fills it and can stay position:relative for its own ::before texture
      layer. No margin-bottom here anymore: .app-nav sits immediately below via its own
      top:var(--hero-h), so there's deliberately no flow-based gap to control. */
   #heroBanner{position:fixed;top:0;left:0;right:0;z-index:52;}
-  .hero-banner{position:relative;width:100%;height:10vh;height:clamp(55px,10dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;}
+  .hero-banner{position:relative;width:100%;height:20vh;height:clamp(55px,20dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;}
   .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
+  /* DKG's own watermark, shown only in the default (no flair team picked) banner -- see
+     renderHeroBanner(). Absolutely positioned (not part of the flex row above) so it can sit
+     left-aligned independent of where a future flair logo would right-align. object-fit:cover
+     with object-position anchored to the top means the box only ever shows a top-down slice of
+     the square source art: short banner heights (small screens) show just the crown, taller
+     ones (the clamp grows with viewport height, up to its 240px ceiling) reveal progressively
+     more of the artwork below it -- no separate pre-cropped image or per-height math needed,
+     the browser's own cover/crop math does it. Uses the transparent-background source (not the
+     solid-background one the home-screen icons use) since it has to blend over ::before's star
+     texture, not carry its own background box; the low opacity is what keeps it a subtle
+     watermark rather than a competing logo. */
+  .hero-banner .hero-banner-watermark{position:absolute;top:0;left:0;height:100%;width:clamp(120px,30vw,240px);max-width:none;object-fit:cover;object-position:50% 0%;opacity:0.2;pointer-events:none;}
   .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--purple);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--purple);background:var(--purple-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding-left:10px;padding-right:10px;padding-bottom:20px;} }
   .back-link{background:rgba(var(--purple-rgb),0.1);border:1.5px solid var(--purple);color:var(--purple);font-family:'Inter',sans-serif;font-weight:800;font-size:12px;padding:5px 12px;margin:0;border-radius:20px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;width:auto;touch-action:manipulation;display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;animation:hubGlow 2.4s ease-in-out infinite;}
@@ -447,16 +462,17 @@ function heroTextureDataURI(hex){
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
-// Full-width hero banner: a solid block in the flair team's primary_hex, a
-// secondary_hex bottom accent stripe, and a contrast-adaptive sparkle
-// texture (see heroTextureDataURI) -- this trio renders for ANY picked
-// flair team, logo image or not. A right-justified, height-cropped logo
-// graphic is layered on top only when that team has a hero_logo_path set
-// (progressive enhancement -- optional, not required for the banner to
-// show). The color/stripe/texture banner always renders regardless of
-// hero_logo_path -- the logo image is the only optional part of it, since
-// clearing a team's hero_logo_path should only remove that team's logo,
-// never the banner itself.
+// Full-width hero banner: a solid block in a primary hex color, a secondary
+// hex bottom accent stripe, and a contrast-adaptive sparkle texture (see
+// heroTextureDataURI) -- this trio renders always, flair team picked or not.
+// With a flair team picked, that team's primary/secondary_hex drive it and a
+// right-justified, height-cropped team logo is layered on top when that team
+// has a hero_logo_path set (progressive enhancement -- optional, not
+// required for the banner to show). With no flair team picked, DKG's own
+// dark-gray/star default renders instead, with a low-opacity, left-aligned
+// DKG logo watermark (.hero-banner-watermark, see its CSS comment for the
+// top-down crop mechanics) standing in for a team logo -- the banner mount
+// is never empty.
 // Lives in the fixed #heroBanner mount just above .wrap (outside its
 // 640px max-width), so it's full-bleed on desktop as well as mobile.
 // Called after profile loads/changes.
@@ -465,18 +481,21 @@ function renderHeroBanner(){
   if(!el) return;
   const team = profile && profile.flair_team ? teamByCode(profile.flair_team) : null;
   // Keeps --hero-h (used by .app-nav's top offset and .wrap's top padding -- see the CSS
-  // comments near #heroBanner/.app-nav) in sync with whatever's actually rendered here: 0 when
-  // there's no banner to show, the same clamp() the banner itself is sized with otherwise. Set
-  // on <html> (documentElement), not this element, since both .app-nav and .wrap need to read it.
+  // comments near #heroBanner/.app-nav) in sync with the clamp() the banner is actually sized
+  // with -- true whether a team's picked or not, since the default banner renders at the same
+  // height. Set on <html> (documentElement), not this element, since both .app-nav and .wrap
+  // need to read it.
+  document.documentElement.style.setProperty('--hero-h', 'clamp(55px,20dvh,240px)');
   if(!team){
-    el.innerHTML = '';
-    document.documentElement.style.setProperty('--hero-h', '0px');
+    // '#242424' is --bg-grad-end's literal value, duplicated here because heroTextureDataURI
+    // needs a real hex to compute star brightness/opacity from, not a CSS custom property --
+    // keep the two in sync if --bg-grad-end's value ever changes.
+    el.innerHTML = `<div class="hero-banner" style="background-color:var(--bg-grad-end);border-bottom-color:var(--border);--hb-texture:url('${heroTextureDataURI('#242424')}');"><img class="hero-banner-watermark" src="images/DKG-Logo-Icon-Full-Transparent.png" alt=""></div>`;
     return;
   }
   const texture = heroTextureDataURI(team.primary_hex);
   const logoImg = team.hero_logo_path ? `<img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}">` : '';
   el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');">${logoImg}</div>`;
-  document.documentElement.style.setProperty('--hero-h', 'clamp(55px,10dvh,240px)');
 }
 
 // Converts a '#rrggbb' hex string into a bare "r, g, b" triplet, for
