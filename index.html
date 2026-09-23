@@ -392,6 +392,9 @@ let currentContestId = null, currentContest = null, currentEntry = null;
 // contest-wide eligibility cutoff (start week + second_chance_window_weeks - 1), the same
 // way request_second_chance() resolves it server-side. null until a contest is entered.
 let currentContestStartWeek = null;
+// Same idea for the contest's last week (max contest_weeks.week_number) -- lets Contest Home's
+// details card show the contest's real week range before any week has kicked off.
+let currentContestEndWeek = null;
 // Set true only by the footer "Disclaimers" link so renderFAQ knows to auto-expand
 // and scroll to the last FAQ item; reset after use so normal FAQ-tab visits (bottom
 // nav, etc.) land at the top with everything collapsed as usual.
@@ -566,6 +569,29 @@ function flairNameColor(code){
 // rather than an emoji. Purely a housekeeping/cosmetic marker -- no click behavior.
 function secondChanceIconHTML(){
   return `<svg class="sc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-label="Used second-chance rebuy"><title>Used second-chance rebuy</title><path d="M12 4v16"/><path d="M12 8c-2-3-6-4-9-3 1 3 4 6 9 6"/><path d="M12 8c2-3 6-4 9-3-1 3-4 6-9 6"/></svg>`;
+}
+
+// Real NFL week range a second-chance window covers -- second_chance_window_weeks counts the
+// contest's own weeks from its start week, so a 3-week window on a contest starting at week 3
+// covers eliminations in weeks 3-5 (same resolution request_second_chance() uses server-side).
+// Returns '' when not offered or the start week isn't known yet.
+function secondChanceWeeksText(windowWeeks, startWeek){
+  if(!windowWeeks || windowWeeks <= 0 || startWeek === null || startWeek === undefined) return '';
+  const cutoff = startWeek + windowWeeks - 1;
+  return cutoff === startWeek ? `week ${startWeek}` : `weeks ${startWeek}–${cutoff}`;
+}
+// "Second-chance rebuy" stat row + explainer line, shared by Contest Home's Week N card and its
+// pre-kickoff Contest details card. Shows the real NFL weeks the window covers rather than a bare
+// week count, since a count alone reads ambiguously for a contest that doesn't start at week 1.
+// The explainer only shows while it's still actionable (offered and not yet used).
+function secondChanceStatHTML(contest, entry, startWeek){
+  const windowWeeks = contest?.second_chance_window_weeks ?? 0;
+  const weeksText = secondChanceWeeksText(windowWeeks, startWeek);
+  const label = windowWeeks <= 0 ? 'Not offered' : (entry?.second_chance_used ? 'Already used' : (weeksText ? weeksText.charAt(0).toUpperCase() + weeksText.slice(1) : 'Yes'));
+  const note = (windowWeeks > 0 && !entry?.second_chance_used)
+    ? `<p class="estimate-note">One-time rebuy for anyone eliminated in ${weeksText || `this contest's first ${windowWeeks} week${windowWeeks === 1 ? '' : 's'}`} — request it from this tab by the week after your elimination.</p>`
+    : '';
+  return `<div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${label}</b></div>${note}`;
 }
 
 // Small filled star used purely as a visual divider between the footer's Disclaimers/Logout/
@@ -1042,12 +1068,14 @@ async function loadAllData(){
 // Contest-level: everything scoped to currentContestId, loaded once a
 // contest is entered from the Lobby (or created).
 async function loadCurrentContest(){
-  const [{ data }, { data: firstWeekRow }] = await Promise.all([
+  const [{ data }, { data: firstWeekRow }, { data: lastWeekRow }] = await Promise.all([
     sb.from('contests').select('*').eq('id', currentContestId).maybeSingle(),
-    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).order('week_number').limit(1).maybeSingle()
+    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).order('week_number').limit(1).maybeSingle(),
+    sb.from('contest_weeks').select('week_number').eq('contest_id', currentContestId).order('week_number', { ascending: false }).limit(1).maybeSingle()
   ]);
   currentContest = data;
   currentContestStartWeek = firstWeekRow?.week_number ?? null;
+  currentContestEndWeek = lastWeekRow?.week_number ?? null;
   lineupSlots = ((data && data.roster_slots) || []).slice().sort((a,b) => a.sort_order - b.sort_order);
 }
 async function refreshCurrentEntry(){
@@ -1719,6 +1747,7 @@ function renderCreateContestForm(area){
       </div>
       <label>Second-chance rebuy window (0 = not offered)</label>
       <input id="cc_scWeeks" type="number" min="0" value="0"/>
+      <div class="note" id="cc_scWeeksPreview" style="display:none;"></div>
       <div class="note">Counts this contest's own weeks starting from 1, not real NFL week numbers and not added on top of the start week. Enter 3 to offer a rebuy to anyone eliminated in this contest's own week 1, 2, or 3 -- so a contest starting at real NFL week 5 would cover real weeks 5-7, not "starting week + 3" (real week 8).</div>
       <div class="note">Everything else uses this app's standard defaults, for now. Entry-fee split percentages, sponsor amounts, and the weekly-prize end week can all still be adjusted afterward from that contest's own Admin tab. Registration starts open — close it any time from the Admin tab once the contest is created.</div>
       <div class="row" style="gap:8px;margin-top:12px;">
@@ -1813,6 +1842,17 @@ function renderCreateContestForm(area){
   document.getElementById('cc_startWeek').oninput = () => { updateWpewNote(); updateSponsorWeeklyPreview(); };
   document.getElementById('cc_endWeek').oninput = updateWpewNote;
   document.getElementById('cc_wpew').oninput = updateSponsorWeeklyPreview;
+  // Live resolved range for the second-chance window, once a start week is entered.
+  const updateScWeeksPreview = () => {
+    const n = parseInt(document.getElementById('cc_scWeeks').value) || 0;
+    const start = parseInt(document.getElementById('cc_startWeek').value);
+    const el = document.getElementById('cc_scWeeksPreview');
+    const weeksText = start ? secondChanceWeeksText(n, start) : '';
+    el.style.display = weeksText ? 'block' : 'none';
+    el.textContent = weeksText ? `= a one-time rebuy for anyone eliminated in NFL ${weeksText}.` : '';
+  };
+  document.getElementById('cc_scWeeks').oninput = updateScWeeksPreview;
+  document.getElementById('cc_startWeek').addEventListener('input', updateScWeeksPreview);
   updateSponsorVisibility();
   // Eliminator-only fields (player-reuse toggle) and Survivor-only fields
   // (weekly threshold) show/hide based on the game-mode pick -- both are
@@ -2295,19 +2335,10 @@ async function renderHome(body){
   // its own copies from currentContest directly, since it has to be independently callable
   // (not just inline in this function) for recapPrev/recapNext's scoped refresh -- see its
   // own comment.
-  // Second-chance rebuy status line shown on the Week recap card below (above the DK
-  // scoring accordion) -- a quick contest-level fact independent of any one week, same
-  // spot the DK scoring reference already lives. Not offered at all when
-  // second_chance_window_weeks <= 0; once used it stays "Already used" for good
-  // (second_chance_used never resets -- see the contest_entries column comment) --
-  // this label never disappears, it just changes state. The "only available during
-  // the first N weeks" qualifier is its own line below the stat row rather than folded
-  // into it -- only shown while it's still actionable information (offered, not yet used).
+  // Used by the eliminated player's own rebuy-eligibility check below. The Second-chance
+  // rebuy status line itself lives on the Week N card, or on the Contest details card before
+  // any week has kicked off (see secondChanceStatHTML()).
   const scWindowWeeks = contestRow?.second_chance_window_weeks ?? 0;
-  const scRebuyLabel = scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes');
-  const secondChanceStatHTML = `
-    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scRebuyLabel}</b></div>
-    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Only available during the first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
   // Player-reuse reminder shown on the "You're alive" card -- unique_players_per_season is
   // locked in at contest creation (see submit_slot_pick's reuse check), but it's easy to
   // forget which way a given contest was set up, especially for KnightFall Guillotine
@@ -2339,8 +2370,6 @@ async function renderHome(body){
     // reinstate the player on its own. This is a one-time rebuy per
     // player per contest (second_chance_used is a boolean, not a
     // counter) -- decided, not something more uses will be added to.
-    // (scWindowWeeks itself is computed once, above, for the recap card's
-    // own second-chance status line -- reused here rather than redone.)
     // Two independent checks, both required, mirroring request_second_chance() exactly:
     // (1) the elimination itself has to have happened within the contest's own
     // eligibility window (start week + second_chance_window_weeks - 1) -- this is the
@@ -2400,6 +2429,7 @@ async function renderHome(body){
     <div id="nameEditArea"></div>
     <div id="flairEditArea"></div>
     ${statusHTML}
+    ${recapHTML ? '' : contestDetailsCardHTML()}
     <div id="recapCardMount">${recapHTML}</div>
     <div id="highScoresCardMount">${highScoresHTML}</div>
   `;
@@ -2465,14 +2495,35 @@ async function renderHome(body){
 // it reads is already-loaded module state, no awaits needed here; the caller awaits
 // loadRecentWeek() beforehand to refresh that state. Returns '' when there's no recent week to
 // show yet, same as the inline version this replaced.
+// Contest Home's pre-kickoff "Contest details" card -- the Week N card below only exists once a
+// week the player has picks in has kicked off, so before that point (e.g. a brand-new contest
+// in its signup window) nothing on Home said how the contest runs. This fills that gap with the
+// same contest-level facts the Week N card carries (weeks, how you survive, second-chance
+// rebuy, DK scoring), and renderHome() drops it once the Week N card takes over.
+function contestDetailsCardHTML(){
+  if(!currentContest) return '';
+  const isEliminator = currentContest.game_type === 'eliminator';
+  const threshold = currentContest.weekly_threshold ?? 100;
+  const weeksLine = (currentContestStartWeek !== null && currentContestEndWeek !== null)
+    ? (currentContestStartWeek === currentContestEndWeek ? `Week ${currentContestStartWeek}` : `Weeks ${currentContestStartWeek}–${currentContestEndWeek}`)
+    : '—';
+  return `
+    <div class="card">
+      <h3>Contest details</h3>
+      <div class="stat" style="margin-top:6px;"><span>Contest runs</span><b>${weeksLine}</b></div>
+      ${isEliminator
+        ? '<div class="stat" style="margin-top:4px;"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
+        : `<div class="stat" style="margin-top:4px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
+      ${secondChanceStatHTML(currentContest, currentEntry, currentContestStartWeek)}
+      ${dkScoringHTML('details')}
+    </div>`;
+}
+
 function renderRecapCardHTML(){
   if(!recentWeekNumber) return '';
   const threshold = currentContest?.weekly_threshold ?? 100;
   const isEliminator = currentContest?.game_type === 'eliminator';
-  const scWindowWeeks = currentContest?.second_chance_window_weeks ?? 0;
-  const secondChanceStatHTML = `
-    <div class="stat" style="margin-top:4px;"><span>Second-chance rebuy</span><b>${scWindowWeeks <= 0 ? 'Not offered' : (currentEntry?.second_chance_used ? 'Already used' : 'Yes')}</b></div>
-    ${scWindowWeeks > 0 && !currentEntry?.second_chance_used ? `<p class="estimate-note">Only available during the first ${scWindowWeeks} week${scWindowWeeks === 1 ? '' : 's'}.</p>` : ''}`;
+  const scStatHTML = secondChanceStatHTML(currentContest, currentEntry, currentContestStartWeek);
 
   const isFinal = !!recentWeekRow?.is_finalized;
   const recapSlotsHTML = lineupSlots.map(slot => {
@@ -2547,7 +2598,7 @@ function renderRecapCardHTML(){
       ${isEliminator
         ? '<div class="stat" style="margin-top:' + (currentTotal !== null ? '4px' : '10px') + ';"><span>How you survive</span><b>Avoid the lowest score(s)</b></div>'
         : `<div class="stat" style="margin-top:${currentTotal !== null ? '4px' : '10px'};"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
-      ${secondChanceStatHTML}
+      ${scStatHTML}
       ${dkScoringHTML('recap')}
     </div>`;
 }
@@ -3589,7 +3640,7 @@ async function renderAdmin(body){
 
     <div class="card">
       <h3>Contest settings</h3>
-      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''} — sport, game mode, weeks, and player-reuse are locked in at creation and can't be changed here. Archive this contest and start a new one to change any of those.</div>
+      <div class="note">${esc(String(contestRow.sport).toUpperCase())} · ${esc(gameTypeLabel(contestRow.game_type))}${isEliminator ? (contestRow.unique_players_per_season === false ? ' · players can be reused week to week' : ' · each player usable once all season') : ''} — sport, game mode, weeks, and player-reuse are locked in at creation and can't be changed here (the second-chance rebuy window below can). Archive this contest and start a new one to change any of those.</div>
       ${isEliminator ? '' : `
       <label>Weekly point threshold to survive</label>
       <input id="s_threshold" type="number" value="${contestRow.weekly_threshold}" placeholder="Threshold"/>`}
@@ -3611,6 +3662,9 @@ async function renderAdmin(body){
         <input id="s_sponsorWeekly" type="number" step="0.01" value="${contestRow.sponsor_weekly_prize || ''}" style="width:auto;flex:1;min-width:0;" placeholder="Weekly prize"/>
       </div>
       <div class="note" id="s_sponsorWeeklyPreview"></div>
+      <label>Second-chance rebuy window (0 = not offered)</label>
+      <input id="s_scWeeks" type="number" min="0" max="${contestEndWeek - contestStartWeek + 1}" value="${contestRow.second_chance_window_weeks ?? 0}"/>
+      <div class="note" id="s_scWeeksNote"></div>
       <button id="saveSettings" style="margin-top:14px;">Save contest settings</button>
     </div>
 
@@ -3703,6 +3757,18 @@ async function renderAdmin(body){
   }
   updateSponsorWeeklyPreview();
 
+  // Live resolved range for the second-chance window -- counts this contest's own weeks from
+  // its start week, same as the Create form, so the note shows the real NFL weeks it covers.
+  const updateScWeeksNote = () => {
+    const n = parseInt(document.getElementById('s_scWeeks').value) || 0;
+    const weeksText = secondChanceWeeksText(n, contestStartWeek);
+    document.getElementById('s_scWeeksNote').textContent = weeksText
+      ? `Counts this contest's own weeks from its start (week ${contestStartWeek}) -- ${n} = a one-time rebuy for anyone eliminated in NFL ${weeksText}. Max ${contestEndWeek - contestStartWeek + 1}.`
+      : `Not offered. Counts this contest's own weeks from its start (week ${contestStartWeek}) -- e.g. 3 covers eliminations in NFL weeks ${contestStartWeek}–${contestStartWeek + 2}.`;
+  };
+  document.getElementById('s_scWeeks').oninput = updateScWeeksNote;
+  updateScWeeksNote();
+
   document.getElementById('toggleRegistrationBtn').onclick = guard(async () => {
     const { error } = await sb.rpc('commissioner_set_registration_open', { p_contest_id: currentContestId, p_open: !contestRow.registration_open });
     if(error){ showBanner(error.message); return; }
@@ -3750,6 +3816,15 @@ async function renderAdmin(body){
       p_sponsor_grand_prize: parseFloat(document.getElementById('s_sponsorGrand').value) || 0,
       p_sponsor_weekly_prize: sponsorWeeklyVal
     });
+    // Second-chance window has its own RPC (it has its own guards -- max length, and not
+    // cutting off a pending request) and is only sent when it actually changed.
+    const scWeeksVal = parseInt(document.getElementById('s_scWeeks').value) || 0;
+    if(scWeeksVal !== (contestRow.second_chance_window_weeks ?? 0)){
+      const { error: scErr } = await sb.rpc('commissioner_update_second_chance_window', { p_contest_id: currentContestId, p_window_weeks: scWeeksVal });
+      if(scErr){ showBanner(scErr.message); renderAdmin(body); return; }
+      if(currentContest) currentContest.second_chance_window_weeks = scWeeksVal;
+    }
+    showBanner('Contest settings saved.');
     renderAdmin(body);
   });
 
