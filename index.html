@@ -313,10 +313,11 @@
   .icon-btn{width:26px;height:26px;padding:0;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text-dim);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .icon-btn svg{width:14px;height:14px;display:block;}
   .icon-btn:active{transform:translateY(1px);}
-  /* Linked payout wallet: a small pill under the "Playing as" name (owner-only -- nobody else
-     ever sees another player's address outside the Admin tab's payouts card), plus the
-     monospace full-address treatment shared by the wallet card and that payouts card. */
-  .wallet-row{margin-top:6px;}
+  /* Linked payout wallet: a small pill at the end of the "Playing as" name row, after the
+     rename/flair icons (owner-only -- nobody else ever sees another player's address outside
+     the Admin tab's payouts card), plus the monospace full-address treatment shared by the
+     wallet card and that payouts card. .name-row's flex-wrap drops it to its own line only
+     when a long name leaves no room. */
   .wallet-chip{display:inline-flex;align-items:center;gap:6px;width:auto;padding:4px 10px;font-size:12px;font-weight:600;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;font-variant-numeric:tabular-nums;}
   .wallet-chip svg{width:13px;height:13px;display:block;}
   .wallet-chip.connect{color:var(--purple);border-color:rgba(var(--purple-rgb),0.5);}
@@ -759,8 +760,6 @@ function playerNameHeaderHTML(){
       ${flairPillHTML(profile.flair_team)}
       <button class="icon-btn" id="editNameBtn" type="button" title="Edit display name" aria-label="Edit display name">${tabIcon('pencil')}</button>
       <button class="icon-btn" id="editFlairBtn" type="button" title="Pick your team flair" aria-label="Pick your team flair">${tabIcon('flair')}</button>
-    </div>
-    <div class="wallet-row">
       ${myWallet
         ? `<button type="button" class="wallet-chip" id="walletChip" title="Your linked payout wallet">${tabIcon('wallet')}${esc(shortAddr(myWallet.address))}</button>`
         : `<button type="button" class="wallet-chip connect" id="walletChip">${tabIcon('wallet')}Connect wallet</button>`}
@@ -3623,7 +3622,7 @@ function faqItems(contest){
     { q: "Is my email visible to other players?",
       a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
     { q: "Why would I connect a wallet?",
-      a: "It's how prizes get paid. Tap \"Connect wallet\" under your name and sign a free message in your wallet app — no transaction, no gas — to prove the wallet is yours. If you win a prize, the contest's admin pays it to that address. Your address is private: other players never see it, only you and the admins of a contest you win a prize in. You can change or remove it any time by tapping it under your name." },
+      a: "It's how prizes get paid. Tap \"Connect wallet\" next to your name and sign a free message in your wallet app — no transaction, no gas — to prove the wallet is yours. If you win a prize, the contest's admin pays it to that address. Your address is private: other players never see it, only you and the admins of a contest you win a prize in. You can change or remove it any time by tapping it next to your name." },
     { q: "Can I change my display name?",
       a: "Yes — tap the pencil icon next to your name on the Lobby, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
     { q: "What's the difference between the Lobby and a contest?",
@@ -3860,7 +3859,7 @@ async function renderAdmin(body){
         const wallet = r.paid_at ? (r.paid_wallet_address || r.wallet_address) : r.wallet_address;
         const walletHTML = wallet
           ? `<div class="payout-addr"><span class="wallet-addr" style="flex:1;min-width:0;">${esc(wallet)}</span><button class="icon-btn" type="button" data-copy-addr="${esc(wallet)}" title="Copy address" aria-label="Copy address">${tabIcon('copy')}</button></div>`
-          : `<div style="margin-top:6px;"><span class="pill caution">No wallet linked</span> <span class="estimate-note">Ask them to tap "Connect wallet" under their name.</span></div>`;
+          : `<div style="margin-top:6px;"><span class="pill caution">No wallet linked</span> <span class="estimate-note">Ask them to tap "Connect wallet" next to their name.</span></div>`;
         const changedNote = (r.paid_at && r.paid_wallet_address && r.wallet_address && r.paid_wallet_address.toLowerCase() !== r.wallet_address.toLowerCase())
           ? '<p class="estimate-note">They\'ve linked a different wallet since this was paid — the address above is the one it was paid to.</p>' : '';
         const staleNote = !r.is_current_winner
