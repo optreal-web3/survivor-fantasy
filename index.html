@@ -313,6 +313,18 @@
   .icon-btn{width:26px;height:26px;padding:0;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text-dim);display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .icon-btn svg{width:14px;height:14px;display:block;}
   .icon-btn:active{transform:translateY(1px);}
+  /* Linked payout wallet: a small pill under the "Playing as" name (owner-only -- nobody else
+     ever sees another player's address outside the Admin tab's payouts card), plus the
+     monospace full-address treatment shared by the wallet card and that payouts card. */
+  .wallet-row{margin-top:6px;}
+  .wallet-chip{display:inline-flex;align-items:center;gap:6px;width:auto;padding:4px 10px;font-size:12px;font-weight:600;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;font-variant-numeric:tabular-nums;}
+  .wallet-chip svg{width:13px;height:13px;display:block;}
+  .wallet-chip.connect{color:var(--purple);border-color:rgba(var(--purple-rgb),0.5);}
+  .wallet-addr{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;color:var(--text);word-break:break-all;}
+  .payout-row{padding:12px 0;border-bottom:1px solid var(--border);}
+  .payout-row:last-child{border-bottom:none;padding-bottom:0;}
+  .payout-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
+  .payout-addr{display:flex;align-items:center;gap:8px;margin-top:6px;min-width:0;}
   .flair-pill{font-size:10px;font-weight:800;padding:3px 8px;border-radius:5px;border:1px solid var(--tile-color,var(--border));color:var(--tile-color,var(--text-dim));white-space:nowrap;letter-spacing:0.4px;}
   .flair-icon{width:25px;height:25px;border-radius:6px;object-fit:cover;flex:0 0 auto;border:1px solid var(--border);}
   .flair-division{margin-top:12px;}
@@ -375,6 +387,12 @@ try { history.scrollRestoration = 'manual'; } catch(e){ /* unsupported in some o
 
 // ---------- GLOBAL STATE ----------
 let session = null, profile = null;
+// The signed-in player's own linked payout wallet ({ address, linked_at }) or null. Read from
+// profile_wallets, whose RLS only ever returns the caller's own row -- see loadProfile().
+let myWallet = null;
+// Commissioner-only: how many prize winners in the current contest are still unpaid (drives
+// the Contest Home payout notice). Set by loadUnpaidPayouts(); always 0 for non-commissioners.
+let unpaidPayoutCount = 0;
 let contests = [];          // every non-draft contest, for the Lobby list
 let myEntries = {};         // contest_id -> this player's contest_entries row (only contests they've joined)
 let currentContestId = null, currentContest = null, currentEntry = null;
@@ -523,6 +541,8 @@ const ICON_PATHS = {
   // Two overlapping people -- distinct from `home` (used for the contest-level Home tab) so
   // neither the Lobby-level nav's own Lobby tab nor the contest-level nav's Lobby tab reads as
   // another flavor of "home."
+  wallet: '<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><path d="M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5Z"/><circle cx="16" cy="13.5" r="1" fill="currentColor" stroke="none"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
   lobby: '<circle cx="8.3" cy="8" r="3"/><path d="M2.8 19.5v-1.3a4 4 0 0 1 4-4h3a4 4 0 0 1 1.8.42"/><circle cx="15.8" cy="9.3" r="3.4"/><path d="M9.6 20v-1.6a4.4 4.4 0 0 1 4.4-4.4h3.6a4.4 4.4 0 0 1 4.4 4.4V20"/>'
 };
 function tabIcon(key){
@@ -739,7 +759,193 @@ function playerNameHeaderHTML(){
       ${flairPillHTML(profile.flair_team)}
       <button class="icon-btn" id="editNameBtn" type="button" title="Edit display name" aria-label="Edit display name">${tabIcon('pencil')}</button>
       <button class="icon-btn" id="editFlairBtn" type="button" title="Pick your team flair" aria-label="Pick your team flair">${tabIcon('flair')}</button>
+    </div>
+    <div class="wallet-row">
+      ${myWallet
+        ? `<button type="button" class="wallet-chip" id="walletChip" title="Your linked payout wallet">${tabIcon('wallet')}${esc(shortAddr(myWallet.address))}</button>`
+        : `<button type="button" class="wallet-chip connect" id="walletChip">${tabIcon('wallet')}Connect wallet</button>`}
     </div>`;
+}
+
+// ---------- WALLET LINKING ----------
+// A player proves they own a wallet by signing a free Sign-In with Ethereum (EIP-4361)
+// message -- no transaction, no gas. The address is then used by contest admins to pay out
+// prizes (see the Admin tab's Prize payouts card). Flow: Reown AppKit (WalletConnect's modal:
+// browser-extension wallets, mobile wallets via WalletConnect, Coinbase) connects a wallet ->
+// wallet_request_nonce() issues a single-use nonce -> the wallet signs a SIWE message bound to
+// this site, Base, and that nonce -> the link-wallet Edge Function verifies the signature
+// server-side and is the only thing that writes profile_wallets. The AppKit session is
+// disconnected right after linking, since the app never needs an ongoing wallet connection.
+// AppKit is loaded lazily (dynamic import) on first use, so it adds nothing to page load.
+const REOWN_PROJECT_ID = '564545753cc658454dc0ebb280a71ee1';
+const APPKIT_CDN_URL = 'https://cdn.jsdelivr.net/npm/@reown/appkit-cdn@1.8.24/dist/appkit.js';
+const WALLET_CHAIN_ID = 8453; // Base -- DGEN lives on Base
+let appKitModule = null, appKitModal = null, appKitProvider = null, appKitAccount = {};
+
+function shortAddr(a){ return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ''; }
+
+async function getAppKit(){
+  if(appKitModal) return appKitModal;
+  appKitModule = await import(APPKIT_CDN_URL);
+  const { createAppKit, WagmiAdapter, networks } = appKitModule;
+  const nets = [networks.base];
+  const adapter = new WagmiAdapter({ networks: nets, projectId: REOWN_PROJECT_ID });
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--purple').trim() || '#8B5CF6';
+  appKitModal = createAppKit({
+    adapters: [adapter],
+    networks: nets,
+    defaultNetwork: networks.base,
+    projectId: REOWN_PROJECT_ID,
+    metadata: {
+      name: 'Degen King Games',
+      description: 'DKG Fantasy Sports Challenge',
+      url: location.origin,
+      icons: [`${location.origin}/images/icon-192.png`]
+    },
+    themeMode: 'dark',
+    themeVariables: { '--w3m-accent': accent, '--w3m-z-index': 1000 },
+    // Wallet connection only -- no embedded email/social wallets, swaps, on-ramp, etc.
+    features: { email: false, socials: false, swaps: false, onramp: false, send: false, receive: false, history: false, analytics: false }
+  });
+  appKitModal.subscribeAccount(s => { appKitAccount = s || {}; });
+  appKitModal.subscribeProviders(s => { appKitProvider = s?.eip155 || null; });
+  return appKitModal;
+}
+
+// Opens the AppKit modal and resolves with the connected address, or null if the player
+// closes the modal without connecting.
+function waitForWalletConnection(kit){
+  return new Promise(resolve => {
+    let done = false, sawOpen = false, unsubAccount = null, unsubState = null;
+    const finish = v => {
+      if(done) return;
+      done = true;
+      if(typeof unsubAccount === 'function') unsubAccount();
+      if(typeof unsubState === 'function') unsubState();
+      resolve(v);
+    };
+    unsubAccount = kit.subscribeAccount(s => { if(s?.isConnected && s.address) finish(s.address); });
+    unsubState = kit.subscribeState(s => {
+      if(s?.open) sawOpen = true;
+      else if(sawOpen) setTimeout(() => finish(appKitAccount.isConnected ? appKitAccount.address : null), 500);
+    });
+    kit.open();
+  });
+}
+
+// Plain EIP-4361 text. The single-line statement and field order match what viem's
+// parseSiweMessage (used by the link-wallet Edge Function) expects.
+function buildSiweMessage(address, nonce){
+  const now = new Date();
+  return `${location.host} wants you to sign in with your Ethereum account:\n${address}\n\n` +
+    `Link this wallet to your Degen King Games account. Signing is free and doesn't send a transaction.\n\n` +
+    `URI: ${location.origin}\nVersion: 1\nChain ID: ${WALLET_CHAIN_ID}\nNonce: ${nonce}\n` +
+    `Issued At: ${now.toISOString()}\nExpiration Time: ${new Date(now.getTime() + 10 * 60 * 1000).toISOString()}`;
+}
+
+// Full connect -> sign -> verify flow. setStatus shows progress text in the wallet card.
+// Returns true once the wallet is linked, false if the player backed out of the modal.
+async function linkWallet(setStatus){
+  setStatus('Opening wallet options…');
+  const kit = await getAppKit();
+  // Start from a clean slate so "Change wallet" always lets the player pick a wallet fresh.
+  if(appKitAccount.isConnected){ try { await kit.disconnect(); } catch(e){ /* nothing to disconnect */ } }
+  const address = await waitForWalletConnection(kit);
+  if(!address){ setStatus(''); return false; }
+  try {
+    const { Viem } = appKitModule;
+    const checksummed = Viem.getAddress(address);
+    const { data: nonce, error: nonceErr } = await sb.rpc('wallet_request_nonce');
+    if(nonceErr) throw nonceErr;
+    const message = buildSiweMessage(checksummed, nonce);
+    setStatus('Check your wallet app and approve the signature request (free — no transaction).');
+    const provider = (typeof kit.getWalletProvider === 'function' && kit.getWalletProvider()) || appKitProvider;
+    if(!provider) throw new Error("Couldn't reach your wallet — please try again.");
+    const signature = await provider.request({ method: 'personal_sign', params: [Viem.toHex(message), checksummed] });
+    setStatus('Verifying…');
+    const { data, error } = await sb.functions.invoke('link-wallet', { body: { message, signature } });
+    if(error){
+      let msg = error.message;
+      try { const j = await error.context.json(); if(j?.error) msg = j.error; } catch(e){ /* keep the generic message */ }
+      throw new Error(msg);
+    }
+    myWallet = { address: data.address, linked_at: new Date().toISOString() };
+    return true;
+  } catch(e){
+    // A wallet's own "user rejected" error is code 4001 -- read that as a cancel, not a failure.
+    if(e?.code === 4001 || /reject|denied|cancel/i.test(e?.message || '')) throw new Error('Signature request was cancelled — your wallet was not linked.');
+    throw e;
+  } finally {
+    try { await kit.disconnect(); } catch(e){ /* already disconnected */ }
+  }
+}
+
+// Wallet pill under the name -> opens a card in #nameEditArea (shared with the name editor,
+// same toggle-open pattern): connect when none is linked, or view/change/remove when one is.
+function wireWalletControls(){
+  const chip = document.getElementById('walletChip');
+  const area = document.getElementById('nameEditArea');
+  if(!chip || !area) return;
+  chip.onclick = () => {
+    if(area.querySelector('#walletCard')){ area.innerHTML = ''; return; }
+    renderWalletCard(area);
+  };
+}
+function renderWalletCard(area){
+  area.innerHTML = `
+    <div class="card" id="walletCard">
+      <h3>${myWallet ? 'Your payout wallet' : 'Connect a wallet'}</h3>
+      ${myWallet
+        ? `<div class="wallet-addr" style="margin-top:8px;">${esc(myWallet.address)}</div>
+           <p class="estimate-note">Linked ${ctDate(myWallet.linked_at)} · Base</p>`
+        : ''}
+      <p>${myWallet
+        ? 'Prizes you win are paid to this address. Only you — and the admins of a contest you win a prize in — can see it.'
+        : "Link a wallet so contest admins can pay out any prizes you win. You'll sign a free message to prove it's yours — no transaction, no gas. Only you, and the admins of a contest you win a prize in, can see your address."}</p>
+      <div class="note" id="walletStatus" style="display:none;"></div>
+      <div class="row" style="gap:8px;margin-top:10px;">
+        <button class="small secondary" id="walletCloseBtn" style="flex:1;">Close</button>
+        ${myWallet ? '<button class="small secondary" id="walletRemoveBtn" style="flex:1;">Remove</button>' : ''}
+        <button class="small" id="walletLinkBtn" style="flex:1;">${myWallet ? 'Change wallet' : 'Connect wallet'}</button>
+      </div>
+      <div id="walletConfirm"></div>
+    </div>`;
+  const statusEl = document.getElementById('walletStatus');
+  const setStatus = msg => { statusEl.textContent = msg; statusEl.style.display = msg ? 'block' : 'none'; };
+  document.getElementById('walletCloseBtn').onclick = () => { area.innerHTML = ''; };
+  const linkBtn = document.getElementById('walletLinkBtn');
+  linkBtn.onclick = async () => {
+    linkBtn.disabled = true;
+    try {
+      const linked = await linkWallet(setStatus);
+      if(linked){ showBanner(`Wallet linked: ${shortAddr(myWallet.address)}`); render(); return; }
+    } catch(e){
+      setStatus('');
+      showBanner(e.message || String(e));
+    }
+    linkBtn.disabled = false;
+  };
+  const removeBtn = document.getElementById('walletRemoveBtn');
+  if(removeBtn){
+    removeBtn.onclick = () => {
+      document.getElementById('walletConfirm').innerHTML = `
+        <div class="confirm-box">
+          <p style="color:var(--text);">Remove this wallet? Contest admins won't have an address to pay any prizes you win until you link one again.</p>
+          <div class="row" style="gap:8px;margin-top:6px;">
+            <button class="small secondary" id="walletRemoveCancel" style="flex:1;">Cancel</button>
+            <button class="small danger" id="walletRemoveConfirm" style="flex:1;">Remove wallet</button>
+          </div>
+        </div>`;
+      document.getElementById('walletRemoveCancel').onclick = () => { document.getElementById('walletConfirm').innerHTML = ''; };
+      document.getElementById('walletRemoveConfirm').onclick = guard(async () => {
+        const { error } = await sb.rpc('unlink_wallet');
+        if(error){ showBanner(error.message); return; }
+        myWallet = null;
+        showBanner('Wallet removed.');
+        render();
+      });
+    };
+  }
 }
 function wireNameEdit(body){
   const btn = document.getElementById('editNameBtn');
@@ -1006,8 +1212,22 @@ function wireDkScoringAccordion(){
 // ---------- DATA LOADING ----------
 // Lobby-level: who am I, and what contests exist / have I joined.
 async function loadProfile(){
-  const { data } = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  const [{ data }, { data: wallet }] = await Promise.all([
+    sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+    sb.from('profile_wallets').select('address, linked_at').eq('profile_id', session.user.id).maybeSingle()
+  ]);
   profile = data;
+  myWallet = wallet || null;
+}
+// Commissioner-only count of unpaid prize winners in the current contest, for Contest Home's
+// payout notice. commissioner_prize_payouts() itself refuses non-commissioners, so this skips
+// the call entirely for everyone else.
+async function loadUnpaidPayouts(){
+  unpaidPayoutCount = 0;
+  if(!currentEntry?.is_commissioner) return;
+  const { data, error } = await sb.rpc('commissioner_prize_payouts', { p_contest_id: currentContestId });
+  if(error) return;
+  unpaidPayoutCount = (data || []).filter(r => r.is_current_winner && !r.paid_at).length;
 }
 async function loadContests(){
   const { data } = await sb.from('contests').select('*').in('status', ['open','active','completed']).order('created_at');
@@ -1294,7 +1514,7 @@ function weekTopPlayersListHTML(top5){
 async function loadContestData(){
   adminScoreWeek = null; // re-derive fresh (defaulting to the oldest unfinalized week) each time a contest is (re-)entered
   await Promise.all([loadCurrentContest(), refreshCurrentEntry(), loadCurrentWeek()]);
-  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadWeekProjections(), loadRecentWeek(), loadFinalizedWeeks()]);
+  await Promise.all([loadMyPicks(), loadUsedPlayers(), loadMyAllPicks(), loadWeekGames(), loadWeekProjections(), loadRecentWeek(), loadFinalizedWeeks(), loadUnpaidPayouts()]);
 }
 
 // ---------- NAV PERSISTENCE ----------
@@ -1360,6 +1580,7 @@ async function verifyLoginCode(code){
 async function signOut(){
   await sb.auth.signOut();
   session = null; profile = null; contests = []; myEntries = {};
+  myWallet = null; unpaidPayoutCount = 0;
   currentContestId = null; currentContest = null; currentEntry = null;
   screen = 'auth'; activeTab = 'lobby';
   otpSent = false; pendingEmail = null; pendingName = null; otpCooldownUntil = 0;
@@ -1933,6 +2154,7 @@ async function renderHub(body){
     </div>
   `;
   wireNameEdit(body);
+  wireWalletControls();
   wireFlairPicker(body);
   wireAddToHomeScreenCard();
   wireGameModesCard();
@@ -2391,6 +2613,7 @@ async function renderHome(body){
     <div id="nameEditArea"></div>
     <div id="flairEditArea"></div>
     ${statusHTML}
+    ${payoutNoticeHTML()}
     ${recapHTML ? '' : contestDetailsCardHTML()}
     <div id="recapCardMount">${recapHTML}</div>
     <div id="highScoresCardMount">${highScoresHTML}</div>
@@ -2399,8 +2622,11 @@ async function renderHome(body){
   if(homeHighScoresData) animateHighScoreChanges(homeHighScoresData.wk, homeHighScoresData.top5);
   wireRecapCard(body);
   wireNameEdit(body);
+  wireWalletControls();
   wireFlairPicker(body);
   wireDkScoringAccordion();
+  const goPayoutsBtn = document.getElementById('goPayoutsBtn');
+  if(goPayoutsBtn) goPayoutsBtn.onclick = () => { activeTab = 'admin'; render(); };
   const joinBtn = document.getElementById('joinFromHomeBtn');
   if(joinBtn){
     joinBtn.onclick = guard(async () => {
@@ -2478,6 +2704,23 @@ function contestDetailsCardHTML(){
         : `<div class="stat" style="margin-top:4px;"><span>Threshold to advance</span><b>${threshold}+ pts</b></div>`}
       ${secondChanceStatHTML(currentContest, currentEntry, currentContestStartWeek)}
       ${dkScoringHTML('details')}
+    </div>`;
+}
+
+// Commissioner-only nudge on Contest Home: shows once a finalized week (or the finished
+// contest) has produced prize winners that haven't been marked paid yet on the Admin tab's
+// Prize payouts card. Count comes from loadUnpaidPayouts(), refreshed on every contest load
+// (which includes right after a week is finalized).
+function payoutNoticeHTML(){
+  if(!currentEntry?.is_commissioner || !unpaidPayoutCount) return '';
+  return `
+    <div class="card" style="border-color:var(--caution);">
+      <div class="row">
+        <h3>Prize payouts ready</h3>
+        <span class="pill caution">${unpaidPayoutCount} unpaid</span>
+      </div>
+      <p>${unpaidPayoutCount === 1 ? 'A prize winner is' : `${unpaidPayoutCount} prize winners are`} waiting to be paid. Their wallet addresses are on the Admin tab.</p>
+      <button class="small" id="goPayoutsBtn" style="margin-top:10px;">Go to payouts</button>
     </div>`;
 }
 
@@ -3027,6 +3270,7 @@ async function renderPicks(body){
     btn.onclick = () => showClearConfirm(btn.dataset.slot, btn.dataset.name);
   });
   wireNameEdit(body);
+  wireWalletControls();
   wireFlairPicker(body);
   wireProjectionsCard();
   wirePickHistoryAccordion();
@@ -3378,6 +3622,8 @@ function faqItems(contest){
       a: "No — once you enter a code, this device stays signed in. You'll only need to sign in again if you switch devices or browsers, sign out, or clear your browser's data." },
     { q: "Is my email visible to other players?",
       a: "No. Only your display name is ever shown to anyone else — your email is never shared or displayed." },
+    { q: "Why would I connect a wallet?",
+      a: "It's how prizes get paid. Tap \"Connect wallet\" under your name and sign a free message in your wallet app — no transaction, no gas — to prove the wallet is yours. If you win a prize, the contest's admin pays it to that address. Your address is private: other players never see it, only you and the admins of a contest you win a prize in. You can change or remove it any time by tapping it under your name." },
     { q: "Can I change my display name?",
       a: "Yes — tap the pencil icon next to your name on the Lobby, Home, or Picks tab. This only changes what other players see; it doesn't affect your email or sign-in, and it applies everywhere, not just one contest." },
     { q: "What's the difference between the Lobby and a contest?",
@@ -3465,18 +3711,23 @@ function renderLegend(body){
 
 async function renderAdmin(body){
   body.innerHTML = `<div class="center">Loading…</div>`;
-  const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }, { count: approvedCount }] = await Promise.all([
+  const [{ data: contestRow }, { data: entryRows }, { data: contestWeekRows }, { count: approvedCount }, { data: payoutRows }] = await Promise.all([
     sb.from('contests').select('*').eq('id', currentContestId).single(),
     sb.from('contest_entries').select('profile_id, is_approved, alive, eliminated_week, second_chance_used, second_chance_requested_at, is_commissioner, profiles!inner(display_name)').eq('contest_id', currentContestId),
     sb.from('contest_weeks').select('week_number, is_finalized').eq('contest_id', currentContestId).order('week_number'),
     // Approved-entrant count, so the settings form below can show a live
     // preview of the actual weekly-prize total (pool cut + sponsor bonus)
     // divided across the paid weeks -- the same math the Prizes tab uses.
-    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true)
+    sb.from('contest_entries').select('profile_id', { count: 'exact', head: true }).eq('contest_id', currentContestId).eq('is_approved', true),
+    // Prize winners + amounts + (private) wallet addresses, computed server-side --
+    // see commissioner_prize_payouts() in the schema for the exact rules.
+    sb.rpc('commissioner_prize_payouts', { p_contest_id: currentContestId })
   ]);
   currentContest = contestRow;
   const isEliminator = contestRow.game_type === 'eliminator';
   const isFree = contestRow.is_free;
+  const payouts = payoutRows || [];
+  unpaidPayoutCount = payouts.filter(r => r.is_current_winner && !r.paid_at).length;
   // weekly_prize_end_week is a real NFL week number (see the Create form's
   // cc_wpew comment), so its valid range is this contest's own start/end
   // week -- read straight off contest_weeks (already fetched above, in
@@ -3590,6 +3841,54 @@ async function renderAdmin(body){
 
   const soleEntrant = players.length <= 1;
 
+  // Prize payouts: one row per winner -- each finalized week inside the weekly-prize range
+  // (highest combined score, ties split) and, once every week is finalized, each grand-prize
+  // survivor. Only rendered once there's at least one row. The full wallet address is shown
+  // here and nowhere else in the app besides the owner's own wallet card. "Mark paid" records
+  // the payment server-side (amount re-derived there, wallet snapshotted); a paid row whose
+  // player is no longer the winner (after a re-finalize) stays visible, flagged, until undone.
+  const payoutUnpaid = payouts.filter(r => r.is_current_winner && !r.paid_at).length;
+  const payoutsHTML = payouts.length ? `
+    <div class="card" style="border-color:${payoutUnpaid ? 'var(--caution)' : 'var(--border)'};">
+      <div class="row">
+        <h3>Prize payouts</h3>
+        <span class="pill ${payoutUnpaid ? 'caution' : 'alive'}">${payoutUnpaid ? `${payoutUnpaid} unpaid` : 'All paid'}</span>
+      </div>
+      <p>Winners show up here as each prize week is finalized, and grand-prize winners once the final week is. Wallet addresses are private — only this contest's admins see them here.</p>
+      ${payouts.map((r, i) => {
+        const label = r.kind === 'grand' ? 'Grand prize' : `Week ${r.week_number} high score`;
+        const wallet = r.paid_at ? (r.paid_wallet_address || r.wallet_address) : r.wallet_address;
+        const walletHTML = wallet
+          ? `<div class="payout-addr"><span class="wallet-addr" style="flex:1;min-width:0;">${esc(wallet)}</span><button class="icon-btn" type="button" data-copy-addr="${esc(wallet)}" title="Copy address" aria-label="Copy address">${tabIcon('copy')}</button></div>`
+          : `<div style="margin-top:6px;"><span class="pill caution">No wallet linked</span> <span class="estimate-note">Ask them to tap "Connect wallet" under their name.</span></div>`;
+        const changedNote = (r.paid_at && r.paid_wallet_address && r.wallet_address && r.paid_wallet_address.toLowerCase() !== r.wallet_address.toLowerCase())
+          ? '<p class="estimate-note">They\'ve linked a different wallet since this was paid — the address above is the one it was paid to.</p>' : '';
+        const staleNote = !r.is_current_winner
+          ? '<p class="estimate-note" style="color:var(--caution);">No longer the winner after a re-finalize — double-check this payment, then Undo it if it was never actually sent.</p>' : '';
+        const actionHTML = r.paid_at
+          ? `<div class="row" style="gap:8px;margin-top:8px;">
+               <span><span class="pill alive">PAID</span> <span class="estimate-note">${ctDate(r.paid_at)}${r.tx_hash ? ` · <a href="https://basescan.org/tx/${esc(r.tx_hash)}" target="_blank" rel="noopener" style="color:var(--purple);">view tx</a>` : ''}</span></span>
+               <button class="small secondary" data-payout-undo="${i}" style="width:auto;">Undo</button>
+             </div>`
+          : `<div class="row" style="gap:8px;margin-top:8px;flex-wrap:nowrap;">
+               <input id="payoutTx-${i}" placeholder="Tx hash (optional)" autocomplete="off" style="margin-top:0;flex:1;min-width:0;font-size:13px;padding:9px;"/>
+               <button class="small" data-payout-pay="${i}" style="width:auto;flex:0 0 auto;">Mark paid</button>
+             </div>`;
+        return `
+          <div class="payout-row">
+            <div class="payout-head">
+              <span style="color:var(--text);font-weight:700;">${esc(r.display_name)}</span>
+              <b style="color:var(--text);font-variant-numeric:tabular-nums;">${fmtAmt(r.amount)}</b>
+            </div>
+            <div class="estimate-note">${label}${r.week_total !== null ? ` · ${fmtPts(r.week_total)} pts` : ''}</div>
+            ${walletHTML}
+            ${changedNote}
+            ${staleNote}
+            ${actionHTML}
+          </div>`;
+      }).join('')}
+    </div>` : '';
+
   body.innerHTML = `
     <div class="card" style="${contestRow.registration_open ? 'border-color:var(--alive);' : 'border-color:var(--elim);'}">
       <div class="row">
@@ -3599,6 +3898,8 @@ async function renderAdmin(body){
       <p>Controls whether new players can join this contest — doesn't affect anyone already in.</p>
       <button class="small ${contestRow.registration_open ? 'secondary' : ''}" id="toggleRegistrationBtn" style="margin-top:10px;">${contestRow.registration_open ? 'Close registration' : 'Open registration'}</button>
     </div>
+
+    ${payoutsHTML}
 
     <div class="card">
       <h3>Contest settings</h3>
@@ -3736,6 +4037,36 @@ async function renderAdmin(body){
     if(error){ showBanner(error.message); return; }
     showBanner(contestRow.registration_open ? 'Registration closed.' : 'Registration opened.');
     renderAdmin(body);
+  });
+
+  document.querySelectorAll('[data-copy-addr]').forEach(btn => {
+    btn.onclick = async () => {
+      try { await navigator.clipboard.writeText(btn.dataset.copyAddr); showBanner('Address copied.'); }
+      catch(e){ showBanner("Couldn't copy automatically — press and hold the address to copy it."); }
+    };
+  });
+  document.querySelectorAll('[data-payout-pay]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const r = payouts[Number(btn.dataset.payoutPay)];
+      const tx = document.getElementById(`payoutTx-${btn.dataset.payoutPay}`).value.trim();
+      const { error } = await sb.rpc('commissioner_mark_payout_paid', {
+        p_contest_id: currentContestId, p_kind: r.kind, p_week: r.week_number, p_profile_id: r.profile_id, p_tx_hash: tx || null
+      });
+      if(error){ showBanner(error.message); return; }
+      showBanner(`Marked ${r.display_name}'s ${r.kind === 'grand' ? 'grand prize' : `week ${r.week_number} prize`} as paid.`);
+      renderAdmin(body);
+    });
+  });
+  document.querySelectorAll('[data-payout-undo]').forEach(btn => {
+    btn.onclick = guard(async () => {
+      const r = payouts[Number(btn.dataset.payoutUndo)];
+      const { error } = await sb.rpc('commissioner_unmark_payout', {
+        p_contest_id: currentContestId, p_kind: r.kind, p_week: r.week_number, p_profile_id: r.profile_id
+      });
+      if(error){ showBanner(error.message); return; }
+      showBanner('Payment record removed.');
+      renderAdmin(body);
+    });
   });
 
   document.querySelectorAll('[data-admin-week]').forEach(btn => {
