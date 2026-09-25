@@ -346,15 +346,6 @@
   .hero-banner{position:relative;width:100%;height:15vh;height:clamp(55px,15dvh,240px);display:flex;align-items:center;justify-content:flex-end;padding-right:20px;overflow:hidden;border-bottom:3px solid transparent;}
   .hero-banner::before{content:'';position:absolute;inset:0;background-image:var(--hb-texture, none);background-size:40px 40px;background-repeat:repeat;pointer-events:none;}
   .hero-banner img{position:relative;max-height:100%;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;}
-  /* Live-week breathing glow -- present in the hero banner's markup unconditionally (see
-     renderHeroBanner()'s own comment) but only animated while the parent .hero-banner also
-     carries .live-pulse, toggled by updateHeroBannerPulse() based on the same recentWeekRow
-     live/final signal as the Week N card's pill. A centered white radial glow with
-     mix-blend-mode:screen reads clearly against the mostly-dark team primary_hex colors and
-     the dark default banner alike without needing a second per-team contrast calculation. */
-  .hero-pulse{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at center, rgba(255,255,255,.6) 0%, rgba(255,255,255,0) 65%);mix-blend-mode:screen;}
-  .hero-banner.live-pulse .hero-pulse{animation:heroPulseBreathe 3.2s ease-in-out infinite;}
-  @keyframes heroPulseBreathe{0%,100%{opacity:.3;transform:scale(.9);}50%{opacity:.7;transform:scale(1.08);}}
   .legend-quote{clear:both;font-family:'Inter',sans-serif;font-weight:600;text-transform:none;font-size:17px;line-height:1.4;color:var(--purple);font-style:italic;margin:16px 0;padding:14px;border-left:3px solid var(--purple);background:var(--purple-dim);border-radius:0 8px 8px 0;}
   @media (max-width:400px){ h1{font-size:21px;} .scoreboard .week{font-size:27px;} .wrap{padding-left:10px;padding-right:10px;padding-bottom:20px;} }
 </style>
@@ -657,11 +648,6 @@ function heroTextureDataURI(hex){
 // document flow, not fixed, so it scrolls away like any other content; see
 // its CSS comment for how it still lines up flush below the fixed nav.
 // Called after profile loads/changes.
-// Both branches always include a .hero-pulse div (before any logo image, so a
-// future logo still paints above it) -- present in the markup unconditionally,
-// but only animated while .hero-banner also carries .live-pulse, which
-// updateHeroBannerPulse() toggles separately (see its own comment) since that
-// depends on contest/week state this function doesn't otherwise know about.
 function renderHeroBanner(){
   const el = document.getElementById('heroBanner');
   if(!el) return;
@@ -670,31 +656,12 @@ function renderHeroBanner(){
     // '#242424' is --bg-grad-end's literal value, duplicated here because heroTextureDataURI
     // needs a real hex to compute star brightness/opacity from, not a CSS custom property --
     // keep the two in sync if --bg-grad-end's value ever changes.
-    el.innerHTML = `<div class="hero-banner" style="background-color:var(--bg-grad-end);border-bottom-color:var(--border);--hb-texture:url('${heroTextureDataURI('#242424')}');"><div class="hero-pulse" aria-hidden="true"></div></div>`;
-    updateHeroBannerPulse();
+    el.innerHTML = `<div class="hero-banner" style="background-color:var(--bg-grad-end);border-bottom-color:var(--border);--hb-texture:url('${heroTextureDataURI('#242424')}');"></div>`;
     return;
   }
   const texture = heroTextureDataURI(team.primary_hex);
   const logoImg = team.hero_logo_path ? `<img src="images/flair/${team.hero_logo_path}" alt="${esc(team.name)}">` : '';
-  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');"><div class="hero-pulse" aria-hidden="true"></div>${logoImg}</div>`;
-  updateHeroBannerPulse();
-}
-// Toggles the live-week breathing-glow pulse on the hero banner -- on only while inside a
-// contest AND that contest's currently-in-view week has started (real first kickoff already
-// passed) but hasn't been finalized yet. Reuses recentWeekNumber/recentWeekRow exactly as
-// loaded by loadRecentWeek() -- the same signal already driving the Week N card's own
-// Live/Final .week-pill on Contest Home -- rather than a second, possibly-drifting timing
-// check, so the pulse and that pill always agree. It stops the moment the admin finalizes
-// that week, and (since recentWeekNumber is null whenever no week has started yet for this
-// contest) never turns on between weeks either -- it's never simply "on forever" once a
-// player is alive. Called from render() (every render, not just after renderHeroBanner()
-// itself) since the underlying live/final state can change from actions that don't touch the
-// hero banner at all (finalizing a week, pull-to-refresh reloading recentWeekRow).
-function updateHeroBannerPulse(){
-  const el = document.querySelector('#heroBanner .hero-banner');
-  if(!el) return;
-  const isLive = currentContestId !== null && recentWeekNumber !== null && !!recentWeekRow && !recentWeekRow.is_finalized;
-  el.classList.toggle('live-pulse', isLive);
+  el.innerHTML = `<div class="hero-banner" style="background-color:${team.primary_hex};border-bottom-color:${team.secondary_hex};--hb-texture:url('${texture}');">${logoImg}</div>`;
 }
 
 // Converts a '#rrggbb' hex string into a bare "r, g, b" triplet, for
@@ -1420,11 +1387,6 @@ function render(){
   const navChanged = navKey !== lastRenderKey;
   lastRenderKey = navKey;
   navJustChanged = navChanged;
-  // #heroBanner is a persistent top-level element, never rebuilt by the shell renders below,
-  // so its live-pulse class needs its own explicit refresh on every render() call -- not just
-  // when renderHeroBanner() itself runs (login/flair-change/sign-out) -- to pick up state that
-  // changes without touching the banner, like a week going live or getting finalized.
-  updateHeroBannerPulse();
   saveNavState();
   // Captured before the shell render below, since renderFAQ() clears jumpToDisclaimersFaq
   // as soon as it consumes it -- the flag would already read false by the time we get to
